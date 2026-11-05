@@ -153,7 +153,21 @@ The orbit is independent of the offset; with `[orbit] enabled` off, the middle b
 
 - EQ would otherwise react to the middle button and to the mouse movement.
   - The input proxy hides the middle button from EQ. While it's held, mouse X/Y go to the orbit instead of the game.
-  - We rotate the eye around the character's head and give EQ's camera heading and pitch the same turn (`SetOrientation` hook), so the camera keeps looking at you. In first person only the angles change, which gives free look.
+  - We rotate the eye around where the character stands and give EQ's camera heading and pitch the same turn (`SetOrientation` hook), so the character stays in place on screen. In first person only the angles change, which gives free look.
+- The rotation happens before EQ's camera collision, so walls and terrain still pull the orbited camera in. `features/camera/game_hooks.cpp` hooks two `eqgame.exe` functions:
+  - The camera update (`0x56ffa8`, `this` = the spawn the camera follows). It runs the controller for the current camera mode (`[0x9254fc + mode*4]`, vtable +0x8), then copies the controller's eye (+0x4) and angles (+0x10) into the engine camera through `SetOrientation` and `SetPosition`.
+  - The line sweep (`0x43a15c`). Every third-person controller builds the eye it wants around the spawn and calls it:
+
+    ```c
+    // eqgame.exe, chase camera controller (0x56fd78): excerpt
+    from = { spawn->x /* +0x30 */, spawn->y /* +0x34 */, spawn->z /* +0x38 */ + EyeHeight(spawn) };
+    to   = from + behind(spawn->heading) * (this->distance /* +0x34 */ + ...) + up * this->height /* +0x2c */;
+    display->CollideLine(from, to, &this->eye.x, &this->eye.y, &this->eye.z, 3);   // stops at the first hit
+    ```
+
+  - While inside the camera update, the first sweep gets `to` rotated by the orbit around the spawn's position (`+0x30`, `+0x34`, `+0x38`). The game then sweeps the orbited eye and stores where it stops.
+  - Some controllers copy their heading from the spawn (`+0x4c`) and their pitch from a fixed value (the controller's `+0x30`, or the spawn's `+0x5c`, optionally minus the float at `0x65fb2c`). Others compute a look-at from the swept eye (`0x46e42f`). We add the orbit only to angles that match a copied value, since a look-at already follows the orbited eye. The log line `orbit in camera mode N` records the choice per mode.
+  - If these hooks can't be installed, we rotate the finished eye instead, and collision only applies to the unorbited direction.
 
 ```c
 // EQGraphicsDX9.dll, camera SetOrientation (0x100047b0): excerpt
@@ -179,7 +193,7 @@ dy is negated when the invert flag (`0x923840`) is set, and the screen size come
 
 Other details:
 
-- The eye stays between 75° below and 85° above the head. In first person, free-look pitch is limited to ±80°.
+- The eye stays between 75° below and 85° above the pivot. In first person, free-look pitch is limited to ±80°.
 - The camera eases back (about 0.3 s) on right-click, on release (`return_on_release`) or on movement (`return_on_move`).
 - The orbit needs the engine hooks. It has no D3D fallback.
 
@@ -209,7 +223,7 @@ FOV, the camera offset and the orbit all behave differently in first and third p
 
 **Code:** `game::PlayerBase()` in [src/game/eqgame.cpp:39](../src/game/eqgame.cpp#L39), `ZoomDistance()` in [src/features/camera/offset.cpp:35](../src/features/camera/offset.cpp#L35).
 
-The zoom fade, the orbit and the near-player test for the camera offset all measure from the character's head.
+The zoom fade and the near-player test for the camera offset measure from the character's head. The orbit pivots on the position EQ's camera controllers build on: x `+0x30`, y `+0x34`, z `+0x38` (they add the eye height, `+0x234` minus `+0x238`, on top).
 
 - The controlled spawn is at `[0x905cf8]`. Its position is x `+0x30`, y `+0x34`, z `+0x2C` (z comes first in memory). The offsets were found in-game by matching them against the first-person eye.
 - The head is z plus a learned eye height. In first person, `ZoomDistance()` takes the eye's height above z (smoothed, accepted only between 0 and 15 units, starting at 5).

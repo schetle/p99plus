@@ -1,7 +1,12 @@
 // Middle-button camera orbit.
 //
-// The orbit is a rigid rotation of the camera around the character's head: the eye is rotated
-// about the head and the camera's angles get the same turn, so the camera keeps looking at you.
+// The orbit is a rigid rotation of the camera around where the character stands: the eye is
+// rotated about that point and the camera's angles get the same turn, so the character stays put
+// on screen.
+// Normally the game itself places the orbited eye: inside its camera update, the eye the camera
+// controller asks for is turned before the game sweeps it for collision (game_hooks.cpp), so
+// walls still pull the camera in. Without those hooks the finished eye is turned afterwards
+// (ApplyToEye), and collision only applies to the unorbited direction.
 //   s_yaw:   world rotation about +Z in radians (positive = counter-clockwise from above)
 //   s_pitch: radians, positive = look up (the eye drops below, looking up at you)
 // Which way EQ's heading/pitch numbers turn the view isn't known for sure, so it is learned
@@ -12,6 +17,7 @@
 #include "game/eqgame.h"
 #include "input/input.h"
 #include "overlay/overlay.h"
+#include "util/mem.h"
 #include "util/timing.h"
 #include <cstring>
 
@@ -33,6 +39,12 @@ int   s_yawSign = 0, s_pitchSign = 0;              // 0 = not learned yet
 int   s_yawVote = 0, s_yawVotes = 0, s_pitchVote = 0, s_pitchVotes = 0;
 float s_lastAng[3] = {}, s_lastPhi = 0.0f, s_lastFz = 0.0f;
 bool  s_haveLast = false;
+
+// The game's camera update (game_hooks.cpp).
+uintptr_t s_updSpawn = 0;          // the spawn being placed, while inside the update
+bool s_updRotated = false;         // this update's collision sweep got the orbited eye
+bool s_gameRotates = false;        // the last update did, so the game's eye already includes the orbit
+bool s_addYaw = true, s_addPitch = true;   // the game's angles don't already follow the orbited eye
 
 void Vote(int sign, int& vote, int& votes, int& locked, const char* what)
 {
@@ -65,28 +77,97 @@ State GetState()
     return s_pitchSign ? State::Ready : State::NoTilt;
 }
 
-// Rotate the eye about the head by the orbit. Sets s_pitchEff (the pitch the angles must match).
-void ApplyToEye(float eye[3], bool firstPerson)
+namespace {
+
+// Rotate `eye` about `pivot` by the orbit and set s_pitchEff (the pitch the angles must match).
+// False when the eye is on the pivot, which leaves nothing to rotate.
+bool Rotate(float eye[3], Vec3 pivot)
 {
     s_pitchEff = s_pitchSign ? s_pitch : 0.0f;
-    Vec3 head;
-    if (!HeadPosition(head)) return;
-
-    const Vec3 v = Vec3::Load(eye) - head;
+    const Vec3 v = Vec3::Load(eye) - pivot;
     const float len = v.Length();
-    if (firstPerson || len < 1.0f) {                   // free look: angles only
-        s_pitchEff = math::Clamp(s_pitchEff, -80 * kDegToRad, 80 * kDegToRad);
-        return;
-    }
+    if (len < 1.0f) return false;
     const float horiz = std::sqrt(v.x * v.x + v.y * v.y);
     const float hz  = std::atan2(v.y, v.x) + s_yaw;
     const float elv = std::atan2(v.z, horiz);
-    // Keep the new elevation between 75 deg below and 85 deg above the head.
+    // Keep the new elevation between 75 deg below and 85 deg above the pivot.
     s_pitchEff = math::Clamp(s_pitchEff, elv - 85 * kDegToRad, elv + 75 * kDegToRad);
     const float e2 = elv - s_pitchEff;
-    Vec3{ head.x + len * std::cos(e2) * std::cos(hz),
-          head.y + len * std::cos(e2) * std::sin(hz),
-          head.z + len * std::sin(e2) }.Store(eye);
+    Vec3{ pivot.x + len * std::cos(e2) * std::cos(hz),
+          pivot.y + len * std::cos(e2) * std::sin(hz),
+          pivot.z + len * std::sin(e2) }.Store(eye);
+    return true;
+}
+
+void FreeLook()   // angles only (first person, or no room to orbit)
+{
+    s_pitchEff = math::Clamp(s_pitchSign ? s_pitch : 0.0f, -80 * kDegToRad, 80 * kDegToRad);
+}
+
+bool GameRotatesNow() { return s_updSpawn ? s_updRotated : s_gameRotates; }
+
+// Inside the game's update, after its collision sweep got the orbited eye: which of the angles
+// the controller set already follow that eye? A heading copied from the spawn and a pitch taken
+// from the mode's fixed pitch (or the spawn's) don't, so the orbit is added to them; a look-at
+// computed from the eye does, so adding the orbit would turn it twice.
+void NoteGameAngles(const float native[3])
+{
+    using namespace game;
+    const uintptr_t sp = s_updSpawn;
+    const bool yaw = native[0] == mem::Read<float>(sp + spawn::kHeading);
+
+    const float drop = mem::Read<float>(addr::kPitchDrop);
+    float fixed[4] = { mem::Read<float>(sp + spawn::kPitch), 0, 0, 0 };
+    int n = 1;
+    const int mode = CameraMode();
+    if (mode >= 0 && mode < 9)
+        if (const uintptr_t ctl = mem::Read<uintptr_t>(addr::kCameraCtrls + mode * 4); ctl > 0x10000)
+            fixed[n++] = mem::Read<float>(ctl + camctl::kFixedPitch);
+    for (int i = 0, m = n; i < m; ++i) fixed[n++] = fixed[i] - drop;
+    bool pitch = false;
+    for (int i = 0; i < n; ++i) pitch |= std::fabs(native[1] - fixed[i]) < 1e-3f;
+
+    static int s_loggedMode = -1, s_logged = -1;
+    const int key = (yaw ? 1 : 0) | (pitch ? 2 : 0);
+    if (mode != s_loggedMode || key != s_logged) {
+        Log("camera: orbit in camera mode %d: heading %s, pitch %s", mode,
+            yaw ? "added" : "follows the eye", pitch ? "added" : "follows the eye");
+        s_loggedMode = mode;
+        s_logged = key;
+    }
+    s_addYaw = yaw;
+    s_addPitch = pitch;
+}
+
+} // namespace
+
+// The fallback when the game didn't place the orbited eye itself: turn the finished eye.
+void ApplyToEye(float eye[3], bool firstPerson)
+{
+    if (firstPerson) { FreeLook(); return; }
+    if (GameRotatesNow()) return;                     // already orbited, with collision
+    Vec3 pivot;
+    if (!game::SpawnCameraPos(game::PlayerBase(), pivot) || !Rotate(eye, pivot)) FreeLook();
+}
+
+void BeginGameCamera(uintptr_t spawn)
+{
+    s_updSpawn = spawn;
+    s_updRotated = false;
+}
+
+void RotateDesiredEye(float to[3])
+{
+    if (!s_updSpawn || s_updRotated || !Active() || !Ready() || game::IsFirstPerson()) return;
+    Vec3 pivot;
+    if (game::SpawnCameraPos(s_updSpawn, pivot) && Rotate(to, pivot)) s_updRotated = true;
+}
+
+void EndGameCamera()
+{
+    s_gameRotates = s_updRotated;
+    if (!s_updRotated) s_addYaw = s_addPitch = true;
+    s_updSpawn = 0;
 }
 
 void AngOffset(void* cam, const float in[3], float native[3], float out[3])
@@ -95,8 +176,10 @@ void AngOffset(void* cam, const float in[3], float native[3], float out[3])
     r.ang.Resolve(in, native);
     memcpy(out, native, sizeof(float) * 3);
     if (!r.main || !Active() || !Ready()) return;
-    out[0] = math::WrapEq(native[0] + s_yawSign * s_yaw / kEqUnitRad);
-    if (s_pitchSign) out[1] = native[1] + s_pitchSign * s_pitchEff / kEqUnitRad;
+    if (s_updSpawn && s_updRotated) NoteGameAngles(native);      // the game's SetOrientation in its update
+    const bool game = GameRotatesNow();
+    if (!game || s_addYaw) out[0] = math::WrapEq(native[0] + s_yawSign * s_yaw / kEqUnitRad);
+    if (s_pitchSign && (!game || s_addPitch)) out[1] = native[1] + s_pitchSign * s_pitchEff / kEqUnitRad;
 }
 
 void AngCommit(void* cam, const float native[3], const float out[3])

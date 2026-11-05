@@ -3,6 +3,7 @@
 #include "features/camera/camera.h"
 #include "util/math.h"
 #include "util/readback.h"
+#include <cstdint>
 #include <d3d9.h>
 
 namespace camera {
@@ -36,13 +37,18 @@ void EyeOffset(void* cam, const float in[3], float native[3], float out[3]);
 void EyeCommit(void* cam, const float native[3], const float out[3]);
 // World-space offset for the current camera mode. False when there is none.
 bool ComputeEyeOffset(bool firstPerson, float zoomScale, math::Vec3& d);
-bool HeadPosition(math::Vec3& head);   // the player's head, for the orbit pivot
 
 // ---- orbit (orbit.cpp) ---------------------------------------------------------------------------
 namespace orbit {
 bool Active();          // the orbit is currently turned away from the default view
 bool Ready();           // heading direction learned, so the orbit may be used
+// Turn the finished eye by the orbit, unless the game already placed the orbited eye this frame.
 void ApplyToEye(float eye[3], bool firstPerson);
+// The game's own camera placement (game_hooks.cpp). Between Begin and End, RotateDesiredEye turns
+// the eye the camera controller asks for (once) before the game sweeps it for collision.
+void BeginGameCamera(uintptr_t spawn);
+void RotateDesiredEye(float to[3]);
+void EndGameCamera();
 // Same for the camera's angles (heading, pitch, roll; 512 per circle). Call after EyeOffset.
 void AngOffset(void* cam, const float in[3], float native[3], float out[3]);
 void AngCommit(void* cam, const float native[3], const float out[3]);
@@ -56,5 +62,8 @@ void ApplyFov(void* cam);   // rewrite the camera's half-FOV; call before the bu
 
 // ---- engine camera hooks (engine_hooks.cpp) -------------------------------------------------------
 void EngineHooksOnFrame();
+
+// ---- eqgame.exe camera placement hooks (game_hooks.cpp) -------------------------------------------
+void GameHooksOnFrame();
 
 } // namespace camera

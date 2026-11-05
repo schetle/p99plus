@@ -43,16 +43,21 @@ uintptr_t PlayerBase()
     return p > 0x10000 ? p : 0;
 }
 
-bool PlayerPos(math::Vec3& pos)
+namespace {
+bool ReadPos(uintptr_t p, int zOffset, math::Vec3& pos)
 {
-    const uintptr_t p = PlayerBase();
-    if (!p) return false;
-    const float x = mem::Read<float>(p + spawn::kX), y = mem::Read<float>(p + spawn::kY), z = mem::Read<float>(p + spawn::kZ);
+    if (p < 0x10000) return false;
+    const float x = mem::Read<float>(p + spawn::kX), y = mem::Read<float>(p + spawn::kY), z = mem::Read<float>(p + zOffset);
     auto finite = [](float v) { return v == v && v > -1e7f && v < 1e7f; };
     if (!finite(x) || !finite(y) || !finite(z)) return false;
     pos = { x, y, z };
     return true;
 }
+} // namespace
+
+bool PlayerPos(math::Vec3& pos) { return ReadPos(PlayerBase(), spawn::kZ, pos); }
+
+bool SpawnCameraPos(uintptr_t s, math::Vec3& pos) { return s_ok && ReadPos(s, spawn::kCamZ, pos); }
 
 float PlayerHeading()
 {

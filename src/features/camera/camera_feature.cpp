@@ -125,6 +125,7 @@ void DrawMenu()
 void OnFrame()
 {
     EngineHooksOnFrame();
+    GameHooksOnFrame();
     orbit::OnFrame();
 }
 

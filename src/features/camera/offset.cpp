@@ -45,14 +45,6 @@ float ZoomDistance(bool firstPerson, Vec3 eye)
 
 } // namespace
 
-bool HeadPosition(Vec3& head)
-{
-    Vec3 p;
-    if (!game::PlayerPos(p)) return false;
-    head = { p.x, p.y, p.z + s_headHeight };
-    return true;
-}
-
 bool ComputeEyeOffset(bool firstPerson, float zoomScale, Vec3& d)
 {
     const ModeSettings set = PickSet(firstPerson, zoomScale);
