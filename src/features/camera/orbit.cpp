@@ -9,12 +9,13 @@
 // (ApplyToEye), and collision only applies to the unorbited direction.
 //   s_yaw:   world rotation about +Z in radians (positive = counter-clockwise from above)
 //   s_pitch: radians, positive = look up (the eye drops below, looking up at you)
-// Which way EQ's heading/pitch numbers turn the view isn't known for sure, so it is learned
-// from the view matrix the game builds (LearnAngles) before the orbit is allowed.
+// Which way EQ's heading/pitch numbers turn the view is fixed for this engine build
+// (gfx::kHeadingSign, gfx::kPitchSign).
 #include "features/camera/internal.h"
 #include "core/log.h"
 #include "features/mouse/mouse.h"
 #include "game/eqgame.h"
+#include "game/eqgfx.h"
 #include "input/input.h"
 #include "overlay/overlay.h"
 #include "util/mem.h"
@@ -35,26 +36,11 @@ float s_yaw = 0.0f, s_pitch = 0.0f;
 float s_pitchEff = 0.0f;                           // pitch actually applied this frame (clamped)
 bool  s_returning = false, s_wasDragging = false;
 
-int   s_yawSign = 0, s_pitchSign = 0;              // 0 = not learned yet
-int   s_yawVote = 0, s_yawVotes = 0, s_pitchVote = 0, s_pitchVotes = 0;
-float s_lastAng[3] = {}, s_lastPhi = 0.0f, s_lastFz = 0.0f;
-bool  s_haveLast = false;
-
 // The game's camera update (game_hooks.cpp).
 uintptr_t s_updSpawn = 0;          // the spawn being placed, while inside the update
 bool s_updRotated = false;         // this update's collision sweep got the orbited eye
 bool s_gameRotates = false;        // the last update did, so the game's eye already includes the orbit
 bool s_addYaw = true, s_addPitch = true;   // the game's angles don't already follow the orbited eye
-
-void Vote(int sign, int& vote, int& votes, int& locked, const char* what)
-{
-    if (locked) return;
-    if (sign == vote) ++votes; else { vote = sign; votes = 1; }
-    if (votes >= 8) {
-        locked = vote;
-        Log("camera: %s direction learned: %+d", what, locked);
-    }
-}
 
 } // namespace
 
@@ -68,14 +54,6 @@ void AddMouse(long dx, long dy)
 }
 
 bool Active() { return s_yaw != 0.0f || s_pitch != 0.0f; }
-bool Ready()  { return s_yawSign != 0; }      // tilt also needs s_pitchSign
-
-State GetState()
-{
-    if (!Enabled() || !view::EngineActive()) return State::Off;
-    if (!Ready()) return State::Setup;
-    return s_pitchSign ? State::Ready : State::NoTilt;
-}
 
 namespace {
 
@@ -83,7 +61,7 @@ namespace {
 // False when the eye is on the pivot, which leaves nothing to rotate.
 bool Rotate(float eye[3], Vec3 pivot)
 {
-    s_pitchEff = s_pitchSign ? s_pitch : 0.0f;
+    s_pitchEff = s_pitch;
     const Vec3 v = Vec3::Load(eye) - pivot;
     const float len = v.Length();
     if (len < 1.0f) return false;
@@ -101,7 +79,7 @@ bool Rotate(float eye[3], Vec3 pivot)
 
 void FreeLook()   // angles only (first person, or no room to orbit)
 {
-    s_pitchEff = math::Clamp(s_pitchSign ? s_pitch : 0.0f, -80 * kDegToRad, 80 * kDegToRad);
+    s_pitchEff = math::Clamp(s_pitch, -80 * kDegToRad, 80 * kDegToRad);
 }
 
 bool GameRotatesNow() { return s_updSpawn ? s_updRotated : s_gameRotates; }
@@ -158,7 +136,7 @@ void BeginGameCamera(uintptr_t spawn)
 
 void RotateDesiredEye(float to[3])
 {
-    if (!s_updSpawn || s_updRotated || !Active() || !Ready() || game::IsFirstPerson()) return;
+    if (!s_updSpawn || s_updRotated || !Active() || game::IsFirstPerson()) return;
     Vec3 pivot;
     if (game::SpawnCameraPos(s_updSpawn, pivot) && Rotate(to, pivot)) s_updRotated = true;
 }
@@ -175,41 +153,16 @@ void AngOffset(void* cam, const float in[3], float native[3], float out[3])
     CameraRecord& r = Record(cam);
     r.ang.Resolve(in, native);
     memcpy(out, native, sizeof(float) * 3);
-    if (!r.main || !Active() || !Ready()) return;
+    if (!r.main || !Active()) return;
     if (s_updSpawn && s_updRotated) NoteGameAngles(native);      // the game's SetOrientation in its update
     const bool game = GameRotatesNow();
-    if (!game || s_addYaw) out[0] = math::WrapEq(native[0] + s_yawSign * s_yaw / kEqUnitRad);
-    if (s_pitchSign && (!game || s_addPitch)) out[1] = native[1] + s_pitchSign * s_pitchEff / kEqUnitRad;
+    if (!game || s_addYaw) out[0] = math::WrapEq(native[0] + gfx::kHeadingSign * s_yaw / kEqUnitRad);
+    if (!game || s_addPitch) out[1] = native[1] + gfx::kPitchSign * s_pitchEff / kEqUnitRad;
 }
 
 void AngCommit(void* cam, const float native[3], const float out[3])
 {
     Record(cam).ang.Commit(native, out);
-}
-
-// Compare how the view's forward vector moved with how the game's heading/pitch moved
-// (only while the orbit adds nothing, so the view comes from the game's own angles).
-void LearnAngles(const float ang[3])
-{
-    if ((s_yawSign && s_pitchSign) || Active()) return;
-    Vec3 right, f;
-    if (!view::Axes(right, f)) return;
-
-    const float phi = std::atan2(f.y, f.x);
-    if (s_haveLast) {
-        const float dh = math::WrapEqDelta(ang[0] - s_lastAng[0]);
-        const float dphi = math::WrapPi(phi - s_lastPhi);
-        if (std::fabs(dh) > 0.3f && std::fabs(dh) < 60.0f && std::fabs(dphi) > 1e-4f && std::fabs(f.z) < 0.95f)
-            Vote((dh > 0) == (dphi > 0) ? 1 : -1, s_yawVote, s_yawVotes, s_yawSign, "orbit heading");
-        const float dp = ang[1] - s_lastAng[1];
-        const float dz = f.z - s_lastFz;
-        if (std::fabs(dp) > 0.3f && std::fabs(dp) < 60.0f && std::fabs(dz) > 1e-4f)
-            Vote((dp > 0) == (dz > 0) ? 1 : -1, s_pitchVote, s_pitchVotes, s_pitchSign, "orbit pitch");
-    }
-    memcpy(s_lastAng, ang, sizeof(s_lastAng));
-    s_lastPhi = phi;
-    s_lastFz = f.z;
-    s_haveLast = true;
 }
 
 void OnFrame()
@@ -238,7 +191,7 @@ void OnFrame()
         havePos = true;
     }
 
-    const bool drag = Dragging() && Ready();
+    const bool drag = Dragging();
     if (drag) {
         s_returning = false;
         // Same turn per count as right-click mouselook, including the X/Y sensitivity multipliers.
@@ -255,7 +208,7 @@ void OnFrame()
         Vec3 right, f;
         if (view::Axes(right, f) && -f.y * right.x + f.x * right.y > 0.0f) turn = 1.0f;  // counter-clockwise is toward screen right
         s_yaw = math::WrapPi(s_yaw + turn * dx * yawK);
-        if (s_pitchSign) s_pitch -= dy * pitchK;            // mouse up: look up
+        s_pitch -= dy * pitchK;                             // mouse up: look up
         s_pitch = math::Clamp(s_pitch, -85 * kDegToRad, 85 * kDegToRad);
     } else if (Active()) {
         // Right-click mouselook always takes the camera back.

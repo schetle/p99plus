@@ -87,11 +87,6 @@ void DrawOrbitSection()
     ImGui::Checkbox("Return camera when you move", &o.return_on_move);
     ImGui::EndDisabled();
     if (o.enabled) {
-        const orbit::State os = orbit::GetState();
-        if (os == orbit::State::Setup)
-            ui::Hint("Setting up: turn your character once to enable the orbit.");
-        else if (os == orbit::State::NoTilt)
-            ui::Hint("Look up or down once (right-click drag) to enable tilting.");
         ui::Hint(o.return_on_release ? "The camera swings back when you let go."
                           : o.return_on_move    ? "The camera swings back when you move, turn or right-click."
                           :                       "The camera stays put while you run; right-click swings it back.");

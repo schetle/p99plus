@@ -149,7 +149,7 @@ Fallback, if the engine hooks aren't installed:
 
 The orbit is independent of the offset; with `[orbit] enabled` off, the middle button goes back to the game.
 
-**Code:** input is diverted by `input::RouteAxis()` ([src/input/router.cpp:13](../src/input/router.cpp#L13)) from `Hk_GetDeviceState()` ([src/input/dinput8.cpp:69](../src/input/dinput8.cpp#L69)) and `Hk_GetDeviceData()` ([src/input/dinput8.cpp:97](../src/input/dinput8.cpp#L97)); the orbit angles and swing-back are updated in `camera::orbit::OnFrame()` ([src/features/camera/orbit.cpp:132](../src/features/camera/orbit.cpp#L132)); `Hk_SetAng()` ([src/features/camera/engine_hooks.cpp:59](../src/features/camera/engine_hooks.cpp#L59)) and `Hk_Builder()` apply them through `camera::orbit::AngOffset()` ([orbit.cpp:92](../src/features/camera/orbit.cpp#L92)) for the angles and `camera::EyeOffset()` for the eye.
+**Code:** input is diverted by `input::RouteAxis()` ([src/input/router.cpp:13](../src/input/router.cpp#L13)) from `Hk_GetDeviceState()` ([src/input/dinput8.cpp:69](../src/input/dinput8.cpp#L69)) and `Hk_GetDeviceData()` ([src/input/dinput8.cpp:97](../src/input/dinput8.cpp#L97)); the orbit angles and swing-back are updated in `camera::orbit::OnFrame()` ([src/features/camera/orbit.cpp:168](../src/features/camera/orbit.cpp#L168)); `Hk_SetAng()` ([src/features/camera/engine_hooks.cpp:59](../src/features/camera/engine_hooks.cpp#L59)) and `Hk_Builder()` apply them through `camera::orbit::AngOffset()` ([orbit.cpp:151](../src/features/camera/orbit.cpp#L151)) for the angles and `camera::EyeOffset()` for the eye.
 
 - EQ would otherwise react to the middle button and to the mouse movement.
   - The input proxy hides the middle button from EQ. While it's held, mouse X/Y go to the orbit instead of the game.
@@ -177,8 +177,7 @@ FUN_10003ec0();                       // rebuilds the basis the mouse-pick ray u
 
 Going through `SetOrientation` instead of writing `+0xB0` directly keeps mouse picking in line with the orbited view.
 
-- EQ's angle numbers don't tell us which way they turn the view.
-  - We learn each direction from EQ's view matrix during normal play: heading when the character turns, pitch when you look up or down. A direction locks after 8 matching readings in a row, taken only while the orbit is at rest. Until heading is learned the orbit stays off, and until pitch is learned it only swings sideways.
+- EQ's angle numbers turn the view in a fixed direction for this `EQGraphicsDX9.dll` build: +heading turns the view counter-clockwise about +Z and +pitch looks up (`gfx::kHeadingSign`, `gfx::kPitchSign` in [src/game/eqgfx.h](../src/game/eqgfx.h)). Both were measured from the game's view matrix, so the orbit works from the first frame.
   - Whether mouse-right is a clockwise or counter-clockwise turn about +Z is read from the view's right vector, so the world's handedness isn't assumed.
 
 The turn rate matches right-click mouselook. `game::MouselookRates()` ([src/game/eqgame.cpp:67](../src/game/eqgame.cpp#L67)) works it out from the same values EQ's mouselook uses:

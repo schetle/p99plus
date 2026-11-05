@@ -69,7 +69,6 @@ By default the FOV uses Hor+ scaling: the game's 4:3 vertical FOV is kept and th
 Hold the middle mouse button and drag to rotate the camera around your character without turning them. In first person this works as free look. While it's on, the game no longer sees the middle button.
 
 - `Middle mouse drag rotates the camera` (on by default): enables the orbit.
-- After each game start, turn your character once before the orbit works, and look up or down once (right-click drag) before it can tilt. It uses these to learn which way the camera turns; the section shows a hint until then.
 - Right-click always swings the camera back.
 - `Return camera when you release`: the camera swings back as soon as you let go of the button.
 - `Return camera when you move`: the camera also swings back when you move or turn. Greyed out while the option above is on.

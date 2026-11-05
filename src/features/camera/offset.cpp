@@ -72,7 +72,7 @@ void EyeOffset(void* cam, const float in[3], float native[3], float out[3])
     // Only the world camera, i.e. the one near the player (or any camera when the player is unknown).
     r.main = dist <= kMainCameraRange;
     if (!r.main) return;
-    if (orbit::Active() && orbit::Ready()) orbit::ApplyToEye(out, fp);
+    if (orbit::Active()) orbit::ApplyToEye(out, fp);
 
     float scale = 1.0f;
     Status st = { fp, false, dist, 100.0f };

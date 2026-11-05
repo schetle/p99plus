@@ -55,8 +55,6 @@ namespace orbit {
 bool Enabled();                    // the setting
 bool Dragging();                   // enabled, middle button held, menu closed
 void AddMouse(long dx, long dy);   // mouse movement diverted from the game while dragging
-enum class State { Off, Setup, NoTilt, Ready };
-State GetState();
 } // namespace orbit
 
 } // namespace camera

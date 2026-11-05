@@ -41,7 +41,6 @@ bool ComputeEyeOffset(bool firstPerson, float zoomScale, math::Vec3& d);
 // ---- orbit (orbit.cpp) ---------------------------------------------------------------------------
 namespace orbit {
 bool Active();          // the orbit is currently turned away from the default view
-bool Ready();           // heading direction learned, so the orbit may be used
 // Turn the finished eye by the orbit, unless the game already placed the orbited eye this frame.
 void ApplyToEye(float eye[3], bool firstPerson);
 // The game's own camera placement (game_hooks.cpp). Between Begin and End, RotateDesiredEye turns
@@ -52,8 +51,6 @@ void EndGameCamera();
 // Same for the camera's angles (heading, pitch, roll; 512 per circle). Call after EyeOffset.
 void AngOffset(void* cam, const float in[3], float native[3], float out[3]);
 void AngCommit(void* cam, const float native[3], const float out[3]);
-// After the builder ran with unmodified angles: learn which way heading/pitch turn the view.
-void LearnAngles(const float native[3]);
 void OnFrame();         // once per Present: mouse input and swing-back
 } // namespace orbit
 

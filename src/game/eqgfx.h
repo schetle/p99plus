@@ -23,4 +23,9 @@ inline float& Aspect(void* cam)  { return *(float*)((char*)cam + 0x08); }   // f
 inline float* Angles(void* cam)  { return (float*)((char*)cam + 0xB0); }    // heading, pitch, roll
 inline float* Eye(void* cam)     { return (float*)((char*)cam + 0xBC); }    // x, y, z
 
+// Which way the camera angles turn the view, fixed for this build: +heading turns the forward
+// vector counter-clockwise about +Z, +pitch raises it (measured from the view matrix).
+inline constexpr int kHeadingSign = 1;
+inline constexpr int kPitchSign   = 1;
+
 } // namespace gfx
