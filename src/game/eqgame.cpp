@@ -1,0 +1,82 @@
+#include "game/eqgame.h"
+#include "core/log.h"
+#include "util/mem.h"
+#include <windows.h>
+
+namespace game {
+
+namespace {
+bool s_ok = false;
+bool s_checked = false;
+} // namespace
+
+void Check()
+{
+    if (s_checked) return;
+    s_checked = true;
+    using namespace addr;
+    if ((uintptr_t)GetModuleHandleA(nullptr) != kImageBase ||
+        !mem::Matches((void*)kMouselook, kMouselookPrologue, sizeof(kMouselookPrologue)) ||
+        mem::Read<unsigned char>(kDeadzoneYaw) != 0x7a || mem::Read<unsigned char>(kDeadzonePit) != 0x7a ||
+        mem::Read<unsigned char>(kDeadzoneYaw + 1) != 0x0e || mem::Read<unsigned char>(kDeadzonePit + 1) != 0x0e) {
+        Log("game: eqgame.exe is not the expected build; game patches disabled");
+        return;
+    }
+    s_ok = true;
+}
+
+bool Available() { return s_ok; }
+
+int CameraMode()
+{
+    if (!s_ok) return -1;
+    int m = mem::Read<int>(addr::kCameraMode);
+    return (m >= 0 && m < 32) ? m : -1;
+}
+
+bool IsFirstPerson() { return CameraMode() == 0; }
+
+uintptr_t PlayerBase()
+{
+    if (!s_ok) return 0;
+    uintptr_t p = mem::Read<uintptr_t>(addr::kPlayerPtr);
+    return p > 0x10000 ? p : 0;
+}
+
+bool PlayerPos(math::Vec3& pos)
+{
+    const uintptr_t p = PlayerBase();
+    if (!p) return false;
+    const float x = mem::Read<float>(p + spawn::kX), y = mem::Read<float>(p + spawn::kY), z = mem::Read<float>(p + spawn::kZ);
+    auto finite = [](float v) { return v == v && v > -1e7f && v < 1e7f; };
+    if (!finite(x) || !finite(y) || !finite(z)) return false;
+    pos = { x, y, z };
+    return true;
+}
+
+float PlayerHeading()
+{
+    const uintptr_t p = PlayerBase();
+    return p ? mem::Read<float>(p + spawn::kHeading) : 0.0f;
+}
+
+// factor = (MouseSensitivity - 1) / 7 * 1.5 + 0.5
+//   yaw:   turn speed = dx / screenW * 512 * factor   (heading units; one 60 FPS frame applies a third)
+//   pitch: pitch     -= dy / screenH * 256 * factor   (512 per circle, clamped to +-128)
+//   dy is negated first when the invert-mouse flag is set.
+bool MouselookRates(float& yawRad, float& pitchRad, bool& invert)
+{
+    if (!s_ok) return false;
+    using namespace addr;
+    int w = mem::Read<int>(kScreenRight) - mem::Read<int>(kScreenLeft);
+    int h = mem::Read<int>(kScreenBottom) - mem::Read<int>(kScreenTop);
+    int sens = mem::Read<int>(kMouseSens);
+    if (w <= 0 || h <= 0 || w > 32768 || h > 32768 || sens < 0 || sens > 100) return false;
+    const float factor = (sens - 1) * (1.0f / 7.0f) * 1.5f + 0.5f;
+    yawRad   = 512.0f * factor / w * kTurnPerSpeed * math::kEqUnitRad;   // per count, as at 60 FPS
+    pitchRad = 256.0f * factor / h * math::kEqUnitRad;
+    invert   = mem::Read<unsigned char>(kInvertMouse) != 0;
+    return true;
+}
+
+} // namespace game
