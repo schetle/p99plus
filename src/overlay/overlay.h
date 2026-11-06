@@ -20,9 +20,15 @@ extern const Feature feature;
 bool Visible();
 void SetVisible(bool visible);
 
-// Called from the Direct3D hooks (render/d3d9.cpp).
+// Called from the Direct3D hooks (render/dispatch.cpp).
 void OnPresent(IDirect3DDevice9* dev);
 void PreReset();
 void PostReset();
+
+// The game window's messages, from the host's subclass. True = handled, return *result.
+bool WndProc(HWND h, UINT msg, WPARAM w, LPARAM l, LRESULT* result);
+
+// The core is being unloaded: close the menu, give the game its cursor back, tear down ImGui.
+void Shutdown();
 
 } // namespace overlay

@@ -1,17 +1,13 @@
 // Hooks IDirect3DDevice9::Present, ::Reset, ::SetTransform, ::BeginScene, ::SetVertexShader
-// and ::SetVertexShaderConstantF, and dispatches them to the features that care.
+// and ::SetVertexShaderConstantF, and hands them to the core.
 //
 // EQGraphicsDX9.dll loads d3d9.dll (DXVK under Proton). We wait for it to be
 // loaded, create a throwaway device on a hidden window to read the device
 // vtable, then MinHook the shared implementations.
 
 #include "core/app.h"
-#include "core/feature.h"
 #include "core/log.h"
-#include "features/camera/d3d_fallback.h"
-#include "features/limiter/limiter.h"
-#include "overlay/overlay.h"
-#include "render/d3d9.h"
+#include "host/host.h"
 #include "util/hook.h"
 #include <MinHook.h>
 #include <d3d9.h>
@@ -41,50 +37,57 @@ BeginScene_t   oBeginScene   = nullptr;
 SetVS_t        oSetVS        = nullptr;
 SetVSConstF_t  oSetVSConstF  = nullptr;
 
-bool s_overlay = false;   // true while our overlay renders: its own calls pass through untouched
+// Each hook hands the call to the loaded core (render/dispatch.cpp in the core); with no core
+// loaded the game's call goes through untouched.
 
 HRESULT WINAPI Hk_Present(IDirect3DDevice9* dev, const RECT* src, const RECT* dst, HWND wnd, const RGNDATA* dirty)
 {
-    feature::OnFrame();
-    s_overlay = true;
-    overlay::OnPresent(dev);
-    s_overlay = false;
-    limiter::Wait();
+    host::window::Attach(dev);
+    host::loader::Tick();   // before any core code runs this frame: the only point a core is swapped
+    {
+        host::CoreCall core;
+        if (core.api) core.api->onPresent(dev);
+    }
     return oPresent(dev, src, dst, wnd, dirty);
 }
 
 HRESULT WINAPI Hk_Reset(IDirect3DDevice9* dev, D3DPRESENT_PARAMETERS* pp)
 {
-    overlay::PreReset();
+    host::CoreCall core;
+    if (core.api) core.api->preReset();
     HRESULT hr = oReset(dev, pp);
-    overlay::PostReset();
+    if (core.api) core.api->postReset();
     return hr;
 }
 
 HRESULT WINAPI Hk_SetTransform(IDirect3DDevice9* dev, D3DTRANSFORMSTATETYPE state, const D3DMATRIX* m)
 {
-    if (!s_overlay) m = camera::fallback::OnSetTransform(state, m);
+    host::CoreCall core;
+    if (core.api) m = core.api->onSetTransform(state, m);
     return oSetTransform(dev, state, m);
 }
 
 HRESULT WINAPI Hk_BeginScene(IDirect3DDevice9* dev)
 {
     HRESULT hr = oBeginScene(dev);
-    if (!s_overlay && oSetTransform)
-        if (const D3DMATRIX* v = camera::fallback::ViewForBeginScene())
+    host::CoreCall core;
+    if (core.api && oSetTransform)
+        if (const D3DMATRIX* v = core.api->viewForBeginScene())
             oSetTransform(dev, D3DTS_VIEW, v);
     return hr;
 }
 
 HRESULT WINAPI Hk_SetVS(IDirect3DDevice9* dev, IDirect3DVertexShader9* vs)
 {
-    if (!s_overlay) camera::fallback::OnSetVertexShader(vs);
+    host::CoreCall core;
+    if (core.api) core.api->onSetVertexShader(vs);
     return oSetVS(dev, vs);
 }
 
 HRESULT WINAPI Hk_SetVSConstF(IDirect3DDevice9* dev, UINT reg, const float* data, UINT count)
 {
-    if (!s_overlay) data = camera::fallback::OnSetVertexShaderConstants(reg, data, count);
+    host::CoreCall core;
+    if (core.api) data = core.api->onSetVSConstants(reg, data, count);
     return oSetVSConstF(dev, reg, data, count);
 }
 
@@ -156,7 +159,7 @@ DWORD WINAPI InstallThread(LPVOID)
 
 } // namespace
 
-namespace d3d9 {
+namespace host::d3d9 {
 
 void InstallAsync()
 {
@@ -164,4 +167,4 @@ void InstallAsync()
     if (h) CloseHandle(h);
 }
 
-} // namespace d3d9
+} // namespace host::d3d9

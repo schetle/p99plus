@@ -2,6 +2,7 @@
 #include "core/app.h"
 #include "core/config.h"
 #include "core/feature.h"
+#include "core/host.h"
 #include "overlay/overlay.h"
 #include "overlay/widgets.h"
 #include <cstdio>
@@ -108,7 +109,10 @@ void DrawBanner()
     ImGui::Begin("##banner", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
                                       ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings |
                                       ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
-    ImGui::Text("%s v%s loaded!  Press %s to open the menu.", kAppName, kAppVersion, keybind::Name(cfg.menu_key).c_str());
+    if (g_host->loadCount > 1)
+        ImGui::Text("%s v%s reloaded (#%d).", kAppName, kAppVersion, g_host->loadCount);
+    else
+        ImGui::Text("%s v%s loaded!  Press %s to open the menu.", kAppName, kAppVersion, keybind::Name(cfg.menu_key).c_str());
     ImGui::End();
     ImGui::PopStyleVar();
 }

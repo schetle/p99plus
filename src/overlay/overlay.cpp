@@ -2,6 +2,7 @@
 // the hidden game cursor. The menu contents are in menu.cpp, its input in input_feed.cpp.
 #include "overlay/overlay.h"
 #include "core/app.h"
+#include "core/host.h"
 #include "core/log.h"
 #include "features/mouse/mouse.h"
 #include "overlay/input_feed.h"
@@ -20,12 +21,12 @@ namespace {
 
 IDirect3DDevice9* s_dev = nullptr;
 HWND    s_hwnd = nullptr;
-WNDPROC s_origWndProc = nullptr;
-bool    s_unicode = false;
 bool    s_init = false;
+bool    s_initTried = false;
 bool    s_visible = false;
 bool    s_toggleSwallow = false;      // a newly bound toggle key is still held: don't toggle on it
 std::string s_imguiIni;
+constexpr const char* kVisibleKey = "overlay.visible";   // stash: the menu was open at a reload
 
 // ---- game cursor --------------------------------------------------------------
 // EQ uses a normal Win32 cursor (SetCursor). While the menu is open we force it to
@@ -36,6 +37,7 @@ HCURSOR s_gameCursor = nullptr;
 
 HCURSOR WINAPI Hk_SetCursor(HCURSOR h)
 {
+    hook::Busy busy;
     HCURSOR prev = s_gameCursor;
     s_gameCursor = h;
     if (s_visible) { oSetCursor(nullptr); return prev; }
@@ -57,44 +59,12 @@ void HideGameCursor(bool hide)
     oSetCursor(hide ? nullptr : s_gameCursor);
 }
 
-LRESULT CALLBACK Hk_WndProc(HWND h, UINT msg, WPARAM w, LPARAM l)
-{
-    if (s_visible && s_init) {
-        const bool mouseMsg = (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST) || msg == WM_MOUSELEAVE;
-        const bool keyMsg   = (msg >= WM_KEYFIRST && msg <= WM_KEYLAST);
-
-        if (mouseMsg)
-            return 0;   // menu mouse comes from DirectInput; keep window mouse away from ImGui and the game
-        if (msg == WM_SETCURSOR) {
-            if (oSetCursor) oSetCursor(nullptr);
-            return TRUE;   // don't let the game put its cursor back
-        }
-        if (keyMsg) {
-            // Menu keyboard is polled (feed::Keyboard); don't feed ImGui twice.
-            if (ImGui::GetIO().WantCaptureKeyboard) return 0;
-        } else {
-            ImGui_ImplWin32_WndProcHandler(h, msg, w, l);
-        }
-    }
-    return s_unicode ? CallWindowProcW(s_origWndProc, h, msg, w, l)
-                     : CallWindowProcA(s_origWndProc, h, msg, w, l);
-}
-
 void Init(IDirect3DDevice9* dev)
 {
-    D3DDEVICE_CREATION_PARAMETERS cp = {};
-    dev->GetCreationParameters(&cp);
-    s_hwnd = cp.hFocusWindow;
-    if (!s_hwnd) {
-        IDirect3DSwapChain9* sc = nullptr;
-        if (SUCCEEDED(dev->GetSwapChain(0, &sc))) {
-            D3DPRESENT_PARAMETERS pp = {};
-            sc->GetPresentParameters(&pp);
-            s_hwnd = pp.hDeviceWindow;
-            sc->Release();
-        }
-    }
-    if (!s_hwnd) { Log("overlay: no window for device"); return; }
+    if (s_initTried) return;
+    s_initTried = true;
+    s_hwnd = g_host->hwnd;   // the host found and subclassed it (host/window.cpp)
+    if (!s_hwnd) { Log("overlay: no game window; menu unavailable"); return; }
 
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
@@ -106,16 +76,16 @@ void Init(IDirect3DDevice9* dev)
     ImGui_ImplWin32_Init(s_hwnd);
     ImGui_ImplDX9_Init(dev);
 
-    s_unicode = IsWindowUnicode(s_hwnd);
-    s_origWndProc = (WNDPROC)(s_unicode
-        ? SetWindowLongPtrW(s_hwnd, GWLP_WNDPROC, (LONG_PTR)Hk_WndProc)
-        : SetWindowLongPtrA(s_hwnd, GWLP_WNDPROC, (LONG_PTR)Hk_WndProc));
-
     HookSetCursor();
 
     s_dev = dev;
     s_init = true;
-    Log("overlay: init hwnd=%p dev=%p unicode=%d", s_hwnd, dev, s_unicode);
+    Log("overlay: init hwnd=%p dev=%p", s_hwnd, dev);
+
+    // After a reload: reopen the menu if it was open.
+    bool wasVisible = false;
+    if (stash::GetValue(kVisibleKey, wasVisible) && wasVisible) SetVisible(true);
+    stash::Clear(kVisibleKey);
 }
 
 void PollToggle()
@@ -193,5 +163,45 @@ void OnPresent(IDirect3DDevice9* dev)
 
 void PreReset()  { if (s_init) ImGui_ImplDX9_InvalidateDeviceObjects(); }
 void PostReset() { if (s_init) ImGui_ImplDX9_CreateDeviceObjects(); }
+
+bool WndProc(HWND h, UINT msg, WPARAM w, LPARAM l, LRESULT* result)
+{
+    if (!s_visible || !s_init) return false;
+
+    const bool mouseMsg = (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST) || msg == WM_MOUSELEAVE;
+    const bool keyMsg   = (msg >= WM_KEYFIRST && msg <= WM_KEYLAST);
+
+    if (mouseMsg) {
+        *result = 0;   // menu mouse comes from DirectInput; keep window mouse away from ImGui and the game
+        return true;
+    }
+    if (msg == WM_SETCURSOR) {
+        if (oSetCursor) oSetCursor(nullptr);
+        *result = TRUE;   // don't let the game put its cursor back
+        return true;
+    }
+    if (keyMsg) {
+        // Menu keyboard is polled (feed::Keyboard); don't feed ImGui twice.
+        if (ImGui::GetIO().WantCaptureKeyboard) { *result = 0; return true; }
+    } else {
+        ImGui_ImplWin32_WndProcHandler(h, msg, w, l);
+    }
+    return false;
+}
+
+void Shutdown()
+{
+    stash::Clear(kVisibleKey);
+    if (!s_init) return;
+    const bool visible = s_visible;
+    SetVisible(false);   // gives the game its cursor back while the SetCursor hook is still in
+    keybind::CancelCapture();
+    stash::PutValue(kVisibleKey, visible);
+
+    ImGui_ImplDX9_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+    ImGui::DestroyContext();
+    s_init = false;
+}
 
 } // namespace overlay

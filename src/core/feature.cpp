@@ -26,4 +26,11 @@ void OnFrame()
         if (f->onFrame) f->onFrame();
 }
 
+void Shutdown()
+{
+    const auto& all = All();
+    for (auto it = all.rbegin(); it != all.rend(); ++it)
+        if ((*it)->onShutdown) (*it)->onShutdown();
+}
+
 } // namespace feature

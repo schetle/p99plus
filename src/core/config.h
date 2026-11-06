@@ -30,3 +30,9 @@ void ConfigLoad();          // missing or invalid keys fall back to the built-in
 void ConfigSave();          // rewrites the whole file
 bool ConfigDirty();         // true when settings differ from what was last loaded/saved
 void ConfigClamp();         // pulls Int/Float settings back into range (Ctrl+click typing isn't clamped)
+
+// Across a core reload: ConfigStash keeps every setting's current value and its last loaded/saved
+// value; ConfigUnstash (after ConfigLoad) puts both back, so unsaved edits and the unsaved-changes
+// marker survive. Settings the new build doesn't have are dropped, new ones keep their ini value.
+void ConfigStash();
+void ConfigUnstash();

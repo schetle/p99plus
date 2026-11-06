@@ -24,6 +24,7 @@ bool s_tried = false;
 
 int __fastcall Hk_CameraUpdate(void* spawn, void* edx)
 {
+    hook::Busy busy;
     orbit::BeginGameCamera((uintptr_t)spawn);
     const int r = oCameraUpdate(spawn, edx);
     orbit::EndGameCamera();
@@ -33,6 +34,7 @@ int __fastcall Hk_CameraUpdate(void* spawn, void* edx)
 bool __fastcall Hk_CollideLine(void* display, void* edx, float fx, float fy, float fz,
                                float tx, float ty, float tz, float* ox, float* oy, float* oz, int flags)
 {
+    hook::Busy busy;
     float to[3] = { tx, ty, tz };
     orbit::RotateDesiredEye(to);
     return oCollideLine(display, edx, fx, fy, fz, to[0], to[1], to[2], ox, oy, oz, flags);

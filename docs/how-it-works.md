@@ -6,17 +6,18 @@ Developer notes. For installing and using the overlay, see the [README](../READM
 
 | Piece | Files | What it does |
 |---|---|---|
-| Startup | `src/core/dllmain.cpp`, `src/core/log.cpp` | Opens `p99plus.log`, loads the config, initializes MinHook and starts the d3d9 hook thread (nothing heavy runs inside `DllMain`). The product name and file names come from `src/core/app.h`. |
+| Host | `src/host/` | `dinput8.dll`, the DLL the game loads; it stays loaded for the whole session. `host_main.cpp` opens `p99plus.log`, initializes MinHook and starts the d3d9 hook thread (nothing heavy runs inside `DllMain`). `dinput8.cpp`, `d3d9.cpp` and `window.cpp` own everything the game holds pointers to and hand each call to the core. `loader.cpp` loads `p99plus_core.dll` on the first `Present` and swaps in a new build while the game runs (see [Hot reload](#hot-reload)). The product name and file names come from `src/core/app.h`. |
+| Core | `src/core/core_main.cpp`, `src/shared/core_api.h` | `p99plus_core.dll`: everything below. `CoreInit` loads the config; `shutdown` undoes every hook and patch. `core_api.h` is the whole interface between the two DLLs. |
 | Features | `src/core/feature.h`, `feature.cpp` | A `Feature` bundles a settings table, a per-frame function and a menu tab (title, description, optional enable switch). `feature::All()` is the one ordered list; the menu, config and frame loop all iterate it. |
 | Config | `src/core/config.h`, `config.cpp` | Turns every feature's settings table into `p99plus.ini`: load (missing or invalid values fall back to the defaults the structs were built with, numbers are clamped to each setting's range, also after the menu draws since Ctrl+click typing can go past a slider), whole-file save with a comment above each key, and the unsaved-changes check (compares each value's ini text with the one last loaded or saved). |
-| Input | `src/input/dinput8.cpp`, `router.cpp`, `mouse_state.cpp` | `eqgame.exe` imports `DINPUT8.dll`. `dinput8.cpp` exports `DirectInput8Create`, forwards it to the real system dinput8, and vtable-patches `CreateDevice`, `GetDeviceState` and `GetDeviceData`. `router.cpp` decides what the game sees of each mouse movement (the menu takes it while open, the orbit takes it while the middle button is held, otherwise sensitivity is applied) and hides the middle button; both read paths share it. `mouse_state.cpp` holds the button state and the movement the menu cursor consumes. |
-| Render | `src/render/d3d9.cpp` | Waits for `d3d9.dll`, reads the device vtable from a dummy device, and MinHooks `Present`, `Reset`, `SetTransform`, `BeginScene`, `SetVertexShader` and `SetVertexShaderConstantF`. `Present` runs the features' frame work, draws the overlay and applies the frame cap; the rest go to the camera fallback. |
+| Input | `src/host/dinput8.cpp`, `src/input/device_filter.cpp`, `router.cpp`, `mouse_state.cpp` | `eqgame.exe` imports `DINPUT8.dll`. The host's `dinput8.cpp` exports `DirectInput8Create`, forwards it to the real system dinput8, and vtable-patches `CreateDevice`, `GetDeviceState` and `GetDeviceData`; after each read from the game's mouse or keyboard it calls the core's `input::FilterState()`/`FilterData()`, which rewrite what the game gets. `router.cpp` decides what the game sees of each mouse movement (the menu takes it while open, the orbit takes it while the middle button is held, otherwise sensitivity is applied) and hides the middle button; both read paths share it. `mouse_state.cpp` holds the button state and the movement the menu cursor consumes. |
+| Render | `src/host/d3d9.cpp`, `src/render/dispatch.cpp` | The host waits for `d3d9.dll`, reads the device vtable from a dummy device, and MinHooks `Present`, `Reset`, `SetTransform`, `BeginScene`, `SetVertexShader` and `SetVertexShaderConstantF`. In the core, `dispatch.cpp` handles them: `Present` runs the features' frame work, draws the overlay and applies the frame cap; the rest go to the camera fallback. |
 | Mouse | `src/features/mouse/` | `sensitivity.cpp`: X/Y multipliers (fractional remainder carried over). `mouselook.cpp`: the dead-zone patch and the mouselook hook. |
 | Camera | `src/features/camera/` | One tab with three independently switchable systems: offset, orbit and FOV (`camera_feature.cpp` holds their settings and menu sections). `offset.cpp`: the eye offset and zoom fade. `orbit.cpp`: the middle-drag orbit. `fov.cpp`: the FOV. `engine_hooks.cpp`: hooks the camera code in `EQGraphicsDX9.dll` (the projection builder, `SetPosition`, `SetOrientation`), only if the image base and function prologues match the expected build. `records.cpp`: the real and written eye, angles and FOV per camera object, so nothing is applied twice. `view_tracker.cpp` and `d3d_fallback.cpp`: the game's last view and projection, and the fallback when the engine hooks are missing (offsets the D3D view matrix and the View×Proj shader constants; world up is +Z). |
 | Game | `src/game/eqgame.*`, `eqgfx.h` | Every address, struct offset and function prologue for `eqgame.exe` and `EQGraphicsDX9.dll`. `game::Check()` verifies the image base, the mouselook prologue and the original jump bytes once; on any other build nothing in `eqgame.exe` is touched. |
-| UI | `src/overlay/` | `overlay.cpp`: ImGui (DX9 + Win32 backends), WndProc subclass, menu toggle, and a `SetCursor` hook that hides the game cursor while the menu is open. `menu.cpp`: the window, one tab per feature (description, the enable checkbox if the feature has one, then the feature's controls, greyed out while it is disabled). `input_feed.cpp`: drives ImGui's cursor and keyboard from DirectInput and polled keys. `widgets.cpp`: the shared slider rows. |
+| UI | `src/overlay/` | `overlay.cpp`: ImGui (DX9 + Win32 backends), the window messages (the host's `window.cpp` subclasses the window and passes them on), menu toggle, and a `SetCursor` hook that hides the game cursor while the menu is open. `menu.cpp`: the window, one tab per feature (description, the enable checkbox if the feature has one, then the feature's controls, greyed out while it is disabled). `input_feed.cpp`: drives ImGui's cursor and keyboard from DirectInput and polled keys. `widgets.cpp`: the shared slider rows. |
 | Limiter | `src/features/limiter/` | Optional frame cap applied before Present. |
-| Utilities | `src/util/` | `hook` (MinHook install with a prologue check), `mem` (read and patch memory), `readback` (real vs written value bookkeeping), `small_map`, `math`, `timing`, `keybinding` (shortcut parsing and capture). |
+| Utilities | `src/util/` | `hook` (MinHook install with a prologue check, the `hook::Busy` detour counter), `mem` (read and patch memory, code patches undone at unload), `readback` (real vs written value bookkeeping), `small_map`, `math`, `timing`, `keybinding` (shortcut parsing and capture). |
 
 Third-party code (Dear ImGui, MinHook) is vendored in `third_party/`.
 
@@ -27,6 +28,7 @@ Notes:
   - The d3d9 thread checks for `d3d9.dll` every 100 ms for about 2 minutes, then gives up and the overlay stays off.
   - The engine camera hooks are tried from `Present` every 30 frames until `EQGraphicsDX9.dll` is loaded. A build mismatch or a failed hook isn't retried.
   - The `eqgame.exe` patches are checked and installed on the first `Present`.
+  - The core is loaded on the first `Present` too, after the host has subclassed the game window. Every hook in the core goes in from the features' per-frame work, so a reloaded core installs them again the same way.
 
 Each heading below gives the menu option and its `p99plus.ini` key.
 
@@ -37,7 +39,7 @@ The snippets come from the Titanium binaries (`eqgame.exe` at image base `0x4000
 
 ### X/Y sensitivity (`[mouse] x_sensitivity`, `y_sensitivity`)
 
-**Code:** `mouse::FilterX()`/`FilterY()` in [src/features/mouse/sensitivity.cpp:24](../src/features/mouse/sensitivity.cpp#L24), called by `input::RouteAxis()` ([src/input/router.cpp:13](../src/input/router.cpp#L13)) for the game's mouse deltas in `Hk_GetDeviceState()` ([src/input/dinput8.cpp:69](../src/input/dinput8.cpp#L69)) and `Hk_GetDeviceData()` ([src/input/dinput8.cpp:97](../src/input/dinput8.cpp#L97)).
+**Code:** `mouse::FilterX()`/`FilterY()` in [src/features/mouse/sensitivity.cpp:24](../src/features/mouse/sensitivity.cpp#L24), called by `input::RouteAxis()` ([src/input/router.cpp:13](../src/input/router.cpp#L13)) for the game's mouse deltas in `input::FilterState()` ([src/input/device_filter.cpp:12](../src/input/device_filter.cpp#L12)) and `input::FilterData()` ([src/input/device_filter.cpp:36](../src/input/device_filter.cpp#L36)).
 
 - Each delta is multiplied before EQ sees it. The fractional part is carried to the next read so slow movement isn't lost, and is dropped when the direction reverses.
 - The same multipliers scale the middle-drag orbit.
@@ -45,7 +47,7 @@ The snippets come from the Titanium binaries (`eqgame.exe` at image base `0x4000
 
 ### Remove mouselook axis dead-zone (`[mouse] remove_deadzone`)
 
-**Code:** `mouse::ApplyGamePatches()` in [src/features/mouse/mouselook.cpp:55](../src/features/mouse/mouselook.cpp#L55), called every frame by `feature::OnFrame()` ([src/core/feature.cpp:22](../src/core/feature.cpp#L22)) from `Hk_Present()` ([src/render/d3d9.cpp:46](../src/render/d3d9.cpp#L46)); it writes the two bytes when the setting changes.
+**Code:** `mouse::ApplyGamePatches()` in [src/features/mouse/mouselook.cpp:56](../src/features/mouse/mouselook.cpp#L56), called every frame by `feature::OnFrame()` ([src/core/feature.cpp:22](../src/core/feature.cpp#L22)) from `render::OnPresent()` ([src/render/dispatch.cpp:15](../src/render/dispatch.cpp#L15)); it writes the two bytes when the setting changes.
 
 - EQ zeroes the smaller mouse axis for a frame when it is under 20% of the larger one. At high FPS each frame's delta is only a few counts, so this fires at random during diagonal movement and pitch snaps.
   - We change two conditional jumps in the mouselook code (`jp` → `jmp`) so the zeroing is always skipped. Turning the option off writes the original bytes back.
@@ -149,7 +151,7 @@ Fallback, if the engine hooks aren't installed:
 
 The orbit is independent of the offset; with `[orbit] enabled` off, the middle button goes back to the game.
 
-**Code:** input is diverted by `input::RouteAxis()` ([src/input/router.cpp:13](../src/input/router.cpp#L13)) from `Hk_GetDeviceState()` ([src/input/dinput8.cpp:69](../src/input/dinput8.cpp#L69)) and `Hk_GetDeviceData()` ([src/input/dinput8.cpp:97](../src/input/dinput8.cpp#L97)); the orbit angles and swing-back are updated in `camera::orbit::OnFrame()` ([src/features/camera/orbit.cpp:168](../src/features/camera/orbit.cpp#L168)); `Hk_SetAng()` ([src/features/camera/engine_hooks.cpp:59](../src/features/camera/engine_hooks.cpp#L59)) and `Hk_Builder()` apply them through `camera::orbit::AngOffset()` ([orbit.cpp:151](../src/features/camera/orbit.cpp#L151)) for the angles and `camera::EyeOffset()` for the eye.
+**Code:** input is diverted by `input::RouteAxis()` ([src/input/router.cpp:13](../src/input/router.cpp#L13)) from `input::FilterState()` ([src/input/device_filter.cpp:12](../src/input/device_filter.cpp#L12)) and `input::FilterData()` ([src/input/device_filter.cpp:36](../src/input/device_filter.cpp#L36)); the orbit angles and swing-back are updated in `camera::orbit::OnFrame()` ([src/features/camera/orbit.cpp:168](../src/features/camera/orbit.cpp#L168)); `Hk_SetAng()` ([src/features/camera/engine_hooks.cpp:58](../src/features/camera/engine_hooks.cpp#L58)) and `Hk_Builder()` apply them through `camera::orbit::AngOffset()` ([orbit.cpp:151](../src/features/camera/orbit.cpp#L151)) for the angles and `camera::EyeOffset()` for the eye.
 
 - EQ would otherwise react to the middle button and to the mouse movement.
   - The input proxy hides the middle button from EQ. While it's held, mouse X/Y go to the orbit instead of the game.
@@ -198,10 +200,21 @@ Other details:
 
 ### FPS cap (`[limiter] enabled`, `fps_cap`)
 
-**Code:** `limiter::Wait()` in [src/features/limiter/limiter.cpp:27](../src/features/limiter/limiter.cpp#L27), called from `Hk_Present()` in [src/render/d3d9.cpp:46](../src/render/d3d9.cpp#L46).
+**Code:** `limiter::Wait()` in [src/features/limiter/limiter.cpp:34](../src/features/limiter/limiter.cpp#L34), called from `render::OnPresent()` in [src/render/dispatch.cpp:15](../src/render/dispatch.cpp#L15).
 
 - Only while `[limiter] enabled` is on, we wait inside the Present hook, after the overlay is drawn and before the real Present, until the next frame deadline (timed with the performance counter). The wait sleeps in 1 ms steps and spins for the last ~2 ms. If a frame misses its deadline, the next one is counted from now instead of rushing to catch up.
 - EQ's own `MaxFPS` still applies, so it has to be at least as high as the cap.
+
+## Hot reload
+
+The host loads the core from a copy, `p99plus_core.live.<n>.dll`, never from `p99plus_core.dll` itself: Windows locks a loaded DLL, and on Linux overwriting a mapped DLL changes the pages under the running image. Shadow copies left by a session that ended with a core loaded are deleted at the next start.
+
+- **Trigger:** `loader::Tick()` runs at the top of every `Present`. Every 500 ms it compares the core file's write time and size with the last load; a change that is still there at the next check (so a file being written isn't loaded) starts a reload. The core can also ask for one (`HostApi::requestReload`, the "Reload core" button).
+- **Safe point:** `Tick()` runs before any core code in that frame, so the core is swapped only when nothing is inside it. `host::CoreCall` counts the host's calls into the core on every thread, and `hook::Busy` (the first line of every core detour) counts the core's own hooks. The loader first stops new calls (they pass through to the game), waits up to 200 ms for both counters to drop to zero, and otherwise tries again at the next frame.
+- **Shutdown:** each feature's `onShutdown` runs (last feature first), then the config is stashed, code patches from `mem::PatchCode` are written back, and `MH_Uninitialize` removes every core hook. The overlay closes the menu (giving the game its cursor back) and destroys ImGui. The custom game windows are deleted, and the next core builds them again.
+- **Stash:** state the new core can't rebuild on its own goes through `HostApi::stash`/`unstash`: every setting's current and last-saved value (so unsaved edits and the `*` survive), whether the menu was open, the game's window list (it is only filled as windows are built), the custom windows' UI state, and the camera read-back records (the cameras still hold the old core's offset eye and FOV, which the new core has to recognize as its own). If a load fails, the game runs without a core and the stash is dropped, since it may no longer match the game.
+- **Failure:** a file that isn't a core (no `CoreInit` export, wrong interface version, not a DLL) is logged and skipped; the game keeps running with the host passing everything through, until the file changes again.
+- **Interface:** `src/shared/core_api.h`. The host never caches anything from a core but the `CoreApi` pointer, and the core never stores host pointers outside `g_host`. Bump `kCoreApiVersion` with any change to either struct; a host can't be swapped while the game runs.
 
 ## Camera mode
 

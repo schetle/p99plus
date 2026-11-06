@@ -1,5 +1,7 @@
 #pragma once
-// MinHook install with an optional check that the target is the code we expect.
+// MinHook install with an optional check that the target is the code we expect, and the
+// counter that tells the host when no detour is running (so the core can be unloaded).
+#include <windows.h>
 #include <cstddef>
 
 namespace hook {
@@ -19,5 +21,15 @@ enum class Result { Ok, Mismatch, Failed };
 // With enable=false the hook is only created; enable it later with MH_EnableHook.
 Result Install(const char* name, void* target, void* detour, void** orig,
                Bytes prologue = {}, bool enable = true);
+
+// Detours running right now, on any thread (CoreApi::busy). Every detour in the core starts with
+// `hook::Busy busy;` so the host never frees the core while one is still on a stack.
+extern volatile LONG g_busy;
+struct Busy {
+    Busy()  { InterlockedIncrement(&g_busy); }
+    ~Busy() { InterlockedDecrement(&g_busy); }
+    Busy(const Busy&) = delete;
+    Busy& operator=(const Busy&) = delete;
+};
 
 } // namespace hook

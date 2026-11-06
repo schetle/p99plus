@@ -32,6 +32,7 @@ unsigned s_frame = 0;
 
 void __fastcall Hk_Builder(void* self, void* edx)
 {
+    hook::Busy busy;
     ApplyFov(self);
 
     // Keep the stored eye at real eye + orbit + offset, and the angles at real angles + orbit.
@@ -56,6 +57,7 @@ void __fastcall Hk_Builder(void* self, void* edx)
 // The game sets the camera angles: store real angles + orbit instead.
 void __fastcall Hk_SetAng(void* self, void* edx, const float* ang)
 {
+    hook::Busy busy;
     if (!ang) { oSetAng(self, edx, ang); return; }
     float native[3], out[3];
     orbit::AngOffset(self, ang, native, out);
@@ -66,6 +68,7 @@ void __fastcall Hk_SetAng(void* self, void* edx, const float* ang)
 // The game sets the camera position: store real eye + offset instead.
 int __fastcall Hk_SetPos(void* self, void* edx, const float* pos, int force)
 {
+    hook::Busy busy;
     if (!pos) return oSetPos(self, edx, pos, force);
     float native[3], out[3];
     EyeOffset(self, pos, native, out);

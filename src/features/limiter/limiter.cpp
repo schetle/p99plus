@@ -17,9 +17,16 @@ const Setting kSettings[] = {
     IntSetting ("limiter", "fps_cap", &cfg.fps_cap, 10, 1000, "Frame rate cap in frames per second."),
 };
 
+bool s_timerRes = false;   // timeBeginPeriod(1) is in effect
+
 void DrawMenu()
 {
     ui::SliderI("FPS cap", &cfg.fps_cap, 10, 240);
+}
+
+void Shutdown()
+{
+    if (s_timerRes) { timeEndPeriod(1); s_timerRes = false; }
 }
 
 } // namespace
@@ -27,10 +34,9 @@ void DrawMenu()
 void Wait()
 {
     static LONGLONG next = 0;
-    static bool timerRes = false;
 
     if (!cfg.enabled) { next = 0; return; }
-    if (!timerRes) { timeBeginPeriod(1); timerRes = true; }
+    if (!s_timerRes) { timeBeginPeriod(1); s_timerRes = true; }
 
     const LONGLONG freq = timing::Frequency();
     const LONGLONG period = freq / cfg.fps_cap;
@@ -54,7 +60,7 @@ const Feature feature = {
     "Caps the frame rate right before each frame is shown. Set MaxFPS in eqclient.ini at least as "
     "high as the cap, or the game's own limit applies first.",
     "Enable frame limiter", &cfg.enabled,
-    kSettings, std::size(kSettings), nullptr, DrawMenu,
+    kSettings, std::size(kSettings), nullptr, DrawMenu, Shutdown,
 };
 
 } // namespace limiter

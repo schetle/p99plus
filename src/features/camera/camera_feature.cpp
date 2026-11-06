@@ -130,7 +130,7 @@ const Feature feature = {
     "Camera",
     "What the camera sees and where it sits. Each section below has its own switch.",
     nullptr, nullptr,
-    kSettings, std::size(kSettings), OnFrame, DrawMenu,
+    kSettings, std::size(kSettings), OnFrame, DrawMenu, StashRecords,
 };
 
 } // namespace camera

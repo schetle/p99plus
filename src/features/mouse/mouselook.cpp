@@ -33,6 +33,7 @@ int  s_deadzoneApplied = -1;   // -1 unknown, 0 original, 1 patched
 
 void __fastcall Hk_Mouselook(void* self, void* /*edx*/, int arg)
 {
+    hook::Busy busy;
     if (!cfg.enabled || !cfg.fps_independent_turn) { oMouselook(self, arg); return; }
 
     const uintptr_t p = game::PlayerBase();
@@ -66,8 +67,8 @@ void ApplyGamePatches()
     const int want = cfg.enabled && cfg.remove_deadzone ? 1 : 0;
     if (want != s_deadzoneApplied) {
         const unsigned char op = want ? 0xeb : 0x7a;   // jmp : jp
-        mem::Patch((void*)game::addr::kDeadzoneYaw, &op, 1);
-        mem::Patch((void*)game::addr::kDeadzonePit, &op, 1);
+        mem::PatchCode((void*)game::addr::kDeadzoneYaw, &op, 1);
+        mem::PatchCode((void*)game::addr::kDeadzonePit, &op, 1);
         s_deadzoneApplied = want;
         Log("mouselook: axis dead-zone %s", want ? "removed" : "restored");
     }

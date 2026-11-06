@@ -1,6 +1,7 @@
 #include "core/config.h"
 #include "core/app.h"
 #include "core/feature.h"
+#include "core/host.h"
 #include "core/log.h"
 #include "util/math.h"
 #include <cstdio>
@@ -167,4 +168,54 @@ bool ConfigDirty()
     for (size_t i = 0; i < all.size() && i < s_saved.size(); ++i)
         if (Format(*all[i]) != s_saved[i]) return true;
     return false;
+}
+
+// Stash format: one line per setting, "section\tkey\tcurrent\tsaved". Values never hold tabs or
+// newlines (numbers, true/false, key binding text).
+namespace {
+constexpr const char* kStashKey = "config";
+} // namespace
+
+void ConfigStash()
+{
+    const auto& all = AllSettings();
+    std::string text;
+    for (size_t i = 0; i < all.size(); ++i) {
+        text += std::string(all[i]->section) + "\t" + all[i]->key + "\t" + Format(*all[i]) + "\t" +
+                (i < s_saved.size() ? s_saved[i] : Format(*all[i])) + "\n";
+    }
+    stash::Put(kStashKey, text.data(), text.size());
+}
+
+void ConfigUnstash()
+{
+    size_t size = 0;
+    const char* p = (const char*)stash::Get(kStashKey, &size);
+    if (!p) return;
+    const std::string text(p, size);
+    stash::Clear(kStashKey);
+
+    const auto& all = AllSettings();
+    int restored = 0;
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t end = text.find('\n', pos);
+        if (end == std::string::npos) end = text.size();
+        const std::string line = text.substr(pos, end - pos);
+        pos = end + 1;
+
+        size_t t1 = line.find('\t'), t2 = line.find('\t', t1 + 1), t3 = line.find('\t', t2 + 1);
+        if (t1 == std::string::npos || t2 == std::string::npos || t3 == std::string::npos) continue;
+        const std::string section = line.substr(0, t1), key = line.substr(t1 + 1, t2 - t1 - 1);
+        const std::string current = line.substr(t2 + 1, t3 - t2 - 1), saved = line.substr(t3 + 1);
+        for (size_t i = 0; i < all.size(); ++i) {
+            if (section != all[i]->section || key != all[i]->key) continue;
+            if (Parse(*all[i], current)) {
+                if (i < s_saved.size()) s_saved[i] = saved;
+                ++restored;
+            }
+            break;
+        }
+    }
+    Log("config: %d setting(s) kept from the previous core%s", restored, ConfigDirty() ? " (unsaved changes)" : "");
 }

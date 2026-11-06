@@ -20,7 +20,7 @@ A `dinput8.dll` proxy for the EverQuest **Titanium** client that adds an in-game
 
 Download the zip from the [Releases](https://github.com/schetle/p99plus/releases) page, or build it yourself (see [Building](#building)).
 
-Copy `dinput8.dll` into the EverQuest folder, next to `eqgame.exe`. To uninstall, delete it; `p99plus.ini`, `p99plus_imgui.ini` and `p99plus.log` can stay or go.
+Copy `dinput8.dll` and `p99plus_core.dll` into the EverQuest folder, next to `eqgame.exe`. To uninstall, delete both, plus any `p99plus_core.live.*.dll` (a copy the game uses while running); `p99plus.ini`, `p99plus_imgui.ini` and `p99plus.log` can stay or go.
 
 ### Wine / Proton only: enable the override
 
@@ -84,6 +84,7 @@ If you use it, set the game's own cap (`MaxFPS` in `eqclient.ini`) at least as h
 - `Show FPS when menu hidden`: an FPS counter in the top-left corner while the menu is closed.
 - `Cursor speed`: how fast the menu cursor moves. Under gamescope with `--force-grab-cursor`, the menu cursor is driven by raw mouse input, so adjust this if it feels too fast or slow.
 - `Menu toggle key`: click it, then press the new key. Hold Ctrl, Shift or Alt for a combo.
+- `Reload core`: loads `p99plus_core.dll` again without restarting the game (see [Hot reload](#hot-reload)).
 
 ### Settings
 
@@ -92,14 +93,14 @@ A `*` in the menu title (and a tinted Save button, plus an "unsaved" note beside
 
 ## Building
 
-Both builds produce a 32-bit `build/dinput8.dll`, which you then install as above. MinGW is required (MSVC won't work).
+Both builds produce two 32-bit DLLs, `build/dinput8.dll` and `build/p99plus_core.dll`, which you then install as above. MinGW is required (MSVC won't work).
 
 ### Linux
 
 ```sh
 sudo apt install g++-mingw-w64-i686 cmake   # once
 ./build.sh
-cp build/dinput8.dll "/path/to/EverQuest/"
+cp build/dinput8.dll build/p99plus_core.dll "/path/to/EverQuest/"
 ```
 
 ### Windows (untested)
@@ -113,7 +114,11 @@ cp build/dinput8.dll "/path/to/EverQuest/"
    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
    cmake --build build
    ```
-4. Copy `build/dinput8.dll` into the EverQuest folder.
+4. Copy `build/dinput8.dll` and `build/p99plus_core.dll` into the EverQuest folder.
+
+### Hot reload
+
+`dinput8.dll` stays loaded while the game runs, and everything else lives in `p99plus_core.dll`, which the game reloads by itself within about a second of the file changing. Replace it with a rename, not by writing over it in place (on Linux: copy it next to the old one, then `mv` it over), so the game never reads a half-written file. Settings carry over, unsaved ones included; **Reload core** on the Overlay tab reloads it by hand. Changes to `dinput8.dll` need a game restart. If a new build fails to load, the game keeps running without the mod until the file changes again; `p99plus.log` says why.
 
 ## More
 

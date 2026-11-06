@@ -1,5 +1,3 @@
 #pragma once
-#include <string>
-
-void LogOpen(const std::string& path);
+// One line to the session log (the host owns the file; see host/host_log.cpp).
 void Log(const char* fmt, ...);

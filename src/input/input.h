@@ -1,6 +1,9 @@
 #pragma once
 // Mouse state collected from the game's DirectInput device, and the rules for what the game
 // gets to see of it.
+#include <windows.h>
+#include <dinput.h>
+
 namespace input {
 
 enum class Axis { X, Y, Z };
@@ -20,5 +23,11 @@ bool RouteAxis(Axis axis, long& delta);
 
 // True when the game must not see this button (the middle button belongs to the camera orbit).
 bool HidesButton(int i);
+
+// ---- the game's DirectInput reads (device_filter.cpp) ---------------------------------------
+// Called by the host after a successful GetDeviceState / GetDeviceData on the game's mouse
+// (mouse = true) or keyboard; rewrites what the game gets.
+void FilterState(bool mouse, DWORD cb, void* data);
+void FilterData(bool mouse, DWORD cbObj, DIDEVICEOBJECTDATA* data, DWORD* inOut);
 
 } // namespace input

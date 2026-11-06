@@ -6,16 +6,16 @@
 //
 //   IDirectInput8::CreateDevice      -> remember which device is mouse / keyboard
 //   IDirectInputDevice8::GetDeviceState / GetDeviceData
-//                                    -> hand mouse movement to input::RouteAxis, hide the orbit
-//                                       button, and block everything while the menu is open
+//                                    -> let the core rewrite what the game gets
+//
+// The patches point at this DLL, which is never unloaded, so they stay valid across core reloads.
 //
 // Vtable patching (rather than MinHook) is used here because Wine may use one
 // vtable for several device types; we look up the original per-vtable.
 
 #include "core/app.h"
 #include "core/log.h"
-#include "input/input.h"
-#include "overlay/overlay.h"
+#include "host/host.h"
 #include "util/mem.h"
 #include <dinput.h>
 
@@ -66,31 +66,16 @@ void PatchVtbl(void* obj, int idx, void* hook)
 }
 
 // ---- device hooks -------------------------------------------------------------
+// What the game sees of the input is decided by the core (input/device_filter.cpp); with no
+// core loaded the game gets the real data.
 HRESULT WINAPI Hk_GetDeviceState(void* self, DWORD cb, LPVOID data)
 {
     auto orig = (GetDeviceState_t)FindOrig(self, kGetDeviceState);
     HRESULT hr = orig(self, cb, data);
-    if (FAILED(hr) || !data) return hr;
+    if (FAILED(hr) || !data || (self != s_mouse && self != s_keyboard)) return hr;
 
-    if (self == s_mouse && cb >= sizeof(DIMOUSESTATE)) {
-        auto* ms = (DIMOUSESTATE*)data;
-        const bool wide = cb >= sizeof(DIMOUSESTATE2);
-        BYTE* buttons = wide ? ((DIMOUSESTATE2*)data)->rgbButtons : ms->rgbButtons;
-        const int nbtn = wide ? 8 : 4;
-        for (int i = 0; i < nbtn; ++i) input::SetButton(i, (buttons[i] & 0x80) != 0);
-
-        const bool menu = overlay::Visible();
-        long x = ms->lX, y = ms->lY, z = ms->lZ;
-        ms->lX = input::RouteAxis(input::Axis::X, x) ? 0 : x;
-        ms->lY = input::RouteAxis(input::Axis::Y, y) ? 0 : y;
-        ms->lZ = input::RouteAxis(input::Axis::Z, z) ? 0 : z;
-        if (menu) { memset(data, 0, cb); return hr; }   // the menu hides buttons too
-        for (int i = 0; i < nbtn; ++i)
-            if (input::HidesButton(i)) buttons[i] = 0;
-    }
-    else if (self == s_keyboard && overlay::Visible()) {
-        memset(data, 0, cb);
-    }
+    host::CoreCall core;
+    if (core.api) core.api->filterState(self == s_mouse, cb, data);
     return hr;
 }
 
@@ -101,32 +86,8 @@ HRESULT WINAPI Hk_GetDeviceData(void* self, DWORD cbObj, LPDIDEVICEOBJECTDATA rg
     if (FAILED(hr) || !inOut || !rgdod || (flags & DIGDD_PEEK)) return hr;
     if (self != s_mouse && self != s_keyboard) return hr;
 
-    const bool menu = overlay::Visible();
-
-    if (self == s_mouse) {
-        DWORD kept = 0;
-        for (DWORD i = 0; i < *inOut; ++i) {
-            auto* e = (DIDEVICEOBJECTDATA*)((BYTE*)rgdod + i * cbObj);
-            bool drop = false;
-            if (e->dwOfs >= DIMOFS_BUTTON0 && e->dwOfs <= DIMOFS_BUTTON7) {
-                const int button = (int)(e->dwOfs - DIMOFS_BUTTON0);
-                input::SetButton(button, (e->dwData & 0x80) != 0);
-                drop = input::HidesButton(button);
-            } else if (e->dwOfs == DIMOFS_X || e->dwOfs == DIMOFS_Y || e->dwOfs == DIMOFS_Z) {
-                const input::Axis axis = e->dwOfs == DIMOFS_X ? input::Axis::X
-                                       : e->dwOfs == DIMOFS_Y ? input::Axis::Y : input::Axis::Z;
-                long v = (long)e->dwData;
-                drop = input::RouteAxis(axis, v);
-                e->dwData = (DWORD)v;
-            }
-            if (drop) continue;
-            if (kept != i) memmove((BYTE*)rgdod + kept * cbObj, e, cbObj);
-            ++kept;
-        }
-        *inOut = kept;
-    }
-
-    if (menu) *inOut = 0;   // events were consumed from the buffer; the game sees none
+    host::CoreCall core;
+    if (core.api) core.api->filterData(self == s_mouse, cbObj, rgdod, inOut);
     return hr;
 }
 

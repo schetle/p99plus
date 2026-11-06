@@ -29,6 +29,7 @@ struct CameraRecord {
     bool main = false;     // the world camera (near the player), as opposed to e.g. a UI preview camera
 };
 CameraRecord& Record(void* cam);
+void StashRecords();   // the core is unloading: keep the records for the next core
 
 // ---- eye offset (offset.cpp) -------------------------------------------------------------------
 // `in` is the eye the game set or the one currently stored; `native` receives the real eye and

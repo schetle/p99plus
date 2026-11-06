@@ -22,4 +22,9 @@ inline bool Patch(void* dst, const void* src, size_t n)
     return true;
 }
 
+// Patch() for a byte patch in the game's code that must be undone when the core unloads: the
+// original bytes are recorded the first time an address is patched (mem.cpp).
+bool PatchCode(void* dst, const void* src, size_t n);
+void RestoreCode();   // writes back every original recorded by PatchCode
+
 } // namespace mem

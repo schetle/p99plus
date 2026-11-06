@@ -5,6 +5,8 @@
 
 namespace hook {
 
+volatile LONG g_busy = 0;
+
 Result Install(const char* name, void* target, void* detour, void** orig, Bytes prologue, bool enable)
 {
     if (prologue.data && !mem::Matches(target, prologue.data, prologue.size)) {
