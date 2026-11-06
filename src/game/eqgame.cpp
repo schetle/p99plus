@@ -84,4 +84,35 @@ bool MouselookRates(float& yawRad, float& pitchRad, bool& invert)
     return true;
 }
 
+bool ZoneName(std::string& name)
+{
+    const int id = ZoneId();
+    if (!id) return false;
+    const uintptr_t table = mem::Read<uintptr_t>(addr::kZoneTable);
+    if (table < 0x10000) return false;
+    const uintptr_t record = mem::Read<uintptr_t>(table + zonelist::kRecords + 4 * id);
+    if (record < 0x10000) return false;
+
+    char buf[128];
+    size_t n = 0;
+    for (; n < sizeof(buf) - 1; ++n) {
+        const char c = mem::Read<char>(record + zonelist::kLongName + n);
+        if (c == '\0') break;
+        if (c < 0x20 || c > 0x7e) return false;   // not a zone name: the layout isn't what we expect
+        buf[n] = c;
+    }
+    if (n == 0 || n == sizeof(buf) - 1) return false;
+    name.assign(buf, n);
+    return true;
+}
+
+int ZoneId()
+{
+    // The game masks the instance (high 16 bits) off before the lookup, and ids run 1..1000.
+    const uintptr_t player = PlayerBase();
+    if (!player) return 0;
+    const int id = mem::Read<int>(player + spawn::kZoneId) & 0xffff;
+    return (id >= 1 && id <= zonelist::kMaxId) ? id : 0;
+}
+
 } // namespace game

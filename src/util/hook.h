@@ -18,6 +18,7 @@ enum class Result { Ok, Mismatch, Failed };
 
 // Hooks `target` with `detour` (original goes to *orig) and logs the outcome under `name`.
 // Mismatch = `prologue` doesn't match the code at `target` (a different game build); nothing is hooked.
+// A target that starts with a jump into another module (someone else's hook) is chained onto instead.
 // With enable=false the hook is only created; enable it later with MH_EnableHook.
 Result Install(const char* name, void* target, void* detour, void** orig,
                Bytes prologue = {}, bool enable = true);

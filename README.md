@@ -6,6 +6,7 @@ A `dinput8.dll` proxy for the EverQuest **Titanium** client that adds an in-game
 - FOV control, with ultrawide support
 - FPS-independent horizontal mouse turning and separate X/Y sensitivity
 - removal of the mouselook axis dead-zone
+- a small game window with the zone you are in, the result of your last Sense Heading and your last `/loc`
 - an optional frame limiter
 
 > Check your server's rules before using. Injected DLLs are typically treated like MacroQuest.
@@ -37,7 +38,7 @@ A "loaded" banner appears at the top of the screen for about 10 seconds after th
 
 Press **Insert** to open the menu. While it's open, the game gets no mouse or keyboard input. The key can be changed under *Overlay → Menu toggle key*. Ctrl+click any slider to type an exact value.
 
-Each feature has its own tab with a short description. Mouse and Limiter have an **Enable …** checkbox at the top; switching it off greys out the tab and leaves that part of the game as it was. Camera has a switch per section instead, and Overlay has none.
+Each feature has its own tab with a short description. Mouse and Limiter have an **Enable …** checkbox at the top and Zone info a **Show …** one; switching it off greys out the tab and leaves that part of the game as it was. Camera has a switch per section instead, and Overlay has none.
 
 ### Mouse
 
@@ -72,6 +73,22 @@ Hold the middle mouse button and drag to rotate the camera around your character
 - Right-click always swings the camera back.
 - `Return camera when you release`: the camera swings back as soon as you let go of the button.
 - `Return camera when you move`: the camera also swings back when you move or turn. Greyed out while the option above is on.
+
+### Zone info
+
+A small window in the game's own style, with a border like the game's other windows and up to three lines. Each line has its own checkbox in the tab (*Zone name*, *Heading*, *Last Location*); the lines that are on are shown from the top with no gaps, and with all three off the window goes away.
+
+- the long name of the zone you are in, for example "Butcherblock Mountains";
+- the result of your last Sense Heading and how long ago it was, for example `Heading: North (12s ago)`. A failed attempt shows `Heading: unsure`, and before your first attempt it shows `Heading: ?`. Zoning clears it;
+- the result of your last `/loc` and how long ago it was, for example `Last Location: 120.50, -340.25, 3.75 (40s ago)`, with the numbers as the game printed them. Before your first `/loc` in a zone it shows `Last Location: ?`, and zoning clears it. The line has a pin checkbox at its right end (the skin's own checkbox, so it matches whatever skin you use): tick it to keep the location shown, through new `/loc` results and zoning. Untick it to unpin; the line then shows your latest `/loc` in the current zone.
+
+The heading and the location come from the messages the game prints when you use Sense Heading (from its ability button or a hotkey) or type `/loc` yourself. p99plus never uses the skill or the command for you and doesn't work out either on its own; it only shows what the game told you.
+
+Untick *Enable Pin Location* (under *Last Location* in the tab) to remove the checkbox; that also unpins. Esc doesn't close the window, like the target and chat windows.
+
+Drag the window to move it and drag its edges to resize it. Its position and size are saved with your other windows in the character's UI ini (`UI_<character>_<server>.ini`). Untick *Show the zone info window* to remove it.
+
+The game only knows a window if it is part of the skin it loads, so the first time you enter the world p99plus writes two small files into your skin folder (`UIFiles\<skin>`): `EQUI_P99PlusZoneInfoWnd.xml` and `EQUI_p99plus.xml`, a copy of the skin's `EQUI.xml` with one extra line. The game is told to load the copy. If you switch skins, the files are written to the new one. They are safe to delete; they are recreated on the next load. If the game ever rejects them, p99plus loads your skin unchanged and the window stays off until you restart the game.
 
 ### Limiter
 
@@ -118,7 +135,7 @@ cp build/dinput8.dll build/p99plus_core.dll "/path/to/EverQuest/"
 
 ### Hot reload
 
-`dinput8.dll` stays loaded while the game runs, and everything else lives in `p99plus_core.dll`, which the game reloads by itself within about a second of the file changing. Replace it with a rename, not by writing over it in place (on Linux: copy it next to the old one, then `mv` it over), so the game never reads a half-written file. Settings carry over, unsaved ones included; **Reload core** on the Overlay tab reloads it by hand. Changes to `dinput8.dll` need a game restart. If a new build fails to load, the game keeps running without the mod until the file changes again; `p99plus.log` says why.
+`dinput8.dll` stays loaded while the game runs, and everything else lives in `p99plus_core.dll`, which the game reloads by itself within about a second of the file changing. Replace it with a rename, not by writing over it in place (on Linux: copy it next to the old one, then `mv` it over), so the game never reads a half-written file. Settings carry over, unsaved ones included, and p99plus's own game windows keep the position and size you dragged them to; **Reload core** on the Overlay tab reloads it by hand. Changes to `dinput8.dll` need a game restart. If a new build fails to load, the game keeps running without the mod until the file changes again; `p99plus.log` says why.
 
 ## More
 

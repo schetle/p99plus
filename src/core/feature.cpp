@@ -2,6 +2,8 @@
 #include "features/camera/camera.h"
 #include "features/limiter/limiter.h"
 #include "features/mouse/mouse.h"
+#include "features/zoneinfo/zone_info.h"
+#include "game/eqchat.h"
 #include "game/eqgame.h"
 #include "game/ui/driver.h"
 #include "overlay/overlay.h"
@@ -14,6 +16,7 @@ const std::vector<const Feature*>& All()
     static const std::vector<const Feature*> all = {
         &mouse::feature,
         &camera::feature,
+        &zoneinfo::feature,
         &limiter::feature,
         &overlay::feature,
     };
@@ -23,6 +26,7 @@ const std::vector<const Feature*>& All()
 void OnFrame()
 {
     game::Check();   // features may rely on knowing whether eqgame.exe is the expected build
+    game::chat::Init();
     game::wnd::Init();
     for (const Feature* f : All())
         if (f->onFrame) f->onFrame();

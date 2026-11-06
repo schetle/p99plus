@@ -3,6 +3,7 @@
 // image base 0x400000). Nothing here is touched unless Check() confirmed that build.
 #include "util/math.h"
 #include <cstdint>
+#include <string>
 
 namespace game {
 
@@ -51,6 +52,11 @@ inline constexpr uintptr_t kBuildGameUi   = 0x43efdd;  // __thiscall(this), no a
 inline constexpr uintptr_t kResetGameUi   = 0x43af46;  // __thiscall(this), no arguments
 // The inventory window, one of the in-world windows: set by kBuildGameUi, back to 0 in kResetGameUi.
 inline constexpr uintptr_t kInventoryWnd  = 0x850c34;
+// Zone names: [player + kZoneId] is the zone id; the table holds a pointer per id.
+inline constexpr uintptr_t kZoneTable     = 0x905cc0;  // pointer to the zone list object
+// Chat: every line printed to the chat windows goes through kChatPrint
+// (void __thiscall(CEverQuest* [kEverQuest], const char* text, int color, bool), ret 0xc).
+inline constexpr uintptr_t kChatPrint     = 0x4982c6;
 // Window manager, left button down, after the hit test (eax = hit code, edi = window):
 //   kDragSizableTest: mov edx,[edi+0x64]; test dh,2; jne kDragResize   (8 bytes)
 // A sizable window goes to the resize code, which only moves by the title bar; any other window
@@ -58,13 +64,25 @@ inline constexpr uintptr_t kInventoryWnd  = 0x850c34;
 inline constexpr uintptr_t kDragSizableTest = 0x5b0d79;
 inline constexpr uintptr_t kDragMove        = 0x5b0d81;
 inline constexpr uintptr_t kDragResize      = 0x5b0dda;
+inline constexpr uintptr_t kEverQuest     = 0x988df0;  // CEverQuest*
+// eqstr_*.txt texts: const char* __thiscall(table [kStringTable], int id, int), ret 8.
+inline constexpr uintptr_t kStringTable   = 0x905cb0;
+inline constexpr uintptr_t kGetString     = 0x5dfa00;
 } // namespace addr
+
+// The zone list object: record pointers at +0x1c + id*4; each record has the long name at
+// +0x91 (ids 1..1000, with the instance in the high 16 bits).
+namespace zonelist {
+inline constexpr int kRecords = 0x1c, kLongName = 0x91;
+inline constexpr int kMaxId = 1000;
+} // namespace zonelist
 
 // Field offsets inside the spawn struct.
 namespace spawn {
 inline constexpr int kX = 0x30, kY = 0x34, kZ = 0x2C;          // found in-game by matching the first-person eye
 inline constexpr int kCamZ = 0x38;                             // the z the camera controllers build on (eye height goes on top)
 inline constexpr int kHeading = 0x4c, kTurnSpeed = 0x58, kPitch = 0x5c;
+inline constexpr int kZoneId = 0x204;                          // the zone the character is in
 } // namespace spawn
 
 // Fields of a UI window (CXWnd / CSidlScreenWnd) and its vtable.
@@ -124,6 +142,9 @@ inline constexpr unsigned char kResetGameUiPrologue[] = { 0x56, 0x57, 0x68, 0xf8
 
 inline constexpr unsigned char kDragSizableTestBytes[] = { 0x8b, 0x57, 0x64, 0xf6, 0xc6, 0x02, 0x75, 0x59 };
 
+// mov eax, <seh handler>   (then call __SEH_prolog)
+inline constexpr unsigned char kChatPrintPrologue[] = { 0xb8, 0x0a, 0x70, 0x62, 0x00 };
+
 // One 60 FPS frame of the game's turn integration: heading += speed * 0.02 * ms.
 inline constexpr float kTurnPerSpeed = 0.02f * (1000.0f / 60.0f);
 
@@ -142,5 +163,11 @@ bool      SpawnCameraPos(uintptr_t spawnBase, math::Vec3& pos);
 // How far right-click mouselook turns per mouse count, in radians (yaw at the 60 FPS rate,
 // which is what frame-rate independent mouselook gives), and whether the game inverts Y.
 bool MouselookRates(float& yawRad, float& pitchRad, bool& invert);
+
+// The long name of the zone the character is in ("Butcherblock Mountains"). False when there is
+// no character or the zone is unknown.
+bool ZoneName(std::string& name);
+// The zone id the character is in (instance bits removed), or 0.
+int ZoneId();
 
 } // namespace game
