@@ -57,8 +57,7 @@ void Wait()
 
 const Feature feature = {
     "Limiter",
-    "Caps the frame rate right before each frame is shown. Set MaxFPS in eqclient.ini at least as "
-    "high as the cap, or the game's own limit applies first.",
+    "Caps the frame rate. MaxFPS in eqclient.ini must be at least as high.",
     "Enable frame limiter", &cfg.enabled,
     kSettings, std::size(kSettings), nullptr, DrawMenu, Shutdown,
 };

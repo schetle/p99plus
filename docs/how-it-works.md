@@ -19,7 +19,7 @@ Developer notes. For installing and using the overlay, see the [README](../READM
 | Game windows | `src/game/ui/` | Windows of our own (namespace `game::wnd`): the `CustomWindow` a feature defines and its lifecycle, getting the XML into the skin, the drag patch, XML writers, and the game's string type. See [below](#custom-game-windows). |
 | UI | `src/overlay/` | ImGui (DX9 + Win32 backends) and the menu: one tab per feature. The host's `window.cpp` subclasses the game window and passes messages to `overlay.cpp`, whose `SetCursor` hook hides the game cursor while the menu is open. `input_feed.cpp` drives ImGui's cursor and keyboard from DirectInput and polled keys. |
 | Limiter | `src/features/limiter/` | Optional frame cap applied before Present. |
-| Utilities | `src/util/` | `hook` (MinHook install with a prologue check, chaining onto another module's `jmp`, the `hook::Busy` detour counter), `mem` (read and patch memory, code patches undone at unload), `readback`, `tga`, `small_map`, `math`, `timing`, `keybinding`. |
+| Utilities | `src/util/` | `hook` (MinHook install with a prologue check, chaining onto another module's `jmp`, the `hook::Busy` detour counter), `mem` (read and patch memory, code patches undone at unload), `readback`, `small_map`, `math`, `timing`, `keybinding`. |
 
 Third-party code (Dear ImGui, MinHook) is vendored in `third_party/`.
 

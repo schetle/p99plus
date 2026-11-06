@@ -23,14 +23,11 @@ void DrawMenu()
     ui::SliderF("X sensitivity", &cfg.x_sensitivity, 0.1f, 10.0f, "%.2fx");
     ui::SliderF("Y sensitivity", &cfg.y_sensitivity, 0.1f, 10.0f, "%.2fx");
     if (ImGui::Button("Reset mouse")) { cfg.x_sensitivity = cfg.y_sensitivity = 1.0f; ResetAccumulators(); }
-    ui::Hint("Multiplies the game's mouse input. Ctrl+click a slider to type a value.");
     if (game::Available()) {
         ImGui::Checkbox("Frame-rate independent mouselook", &cfg.fps_independent_turn);
-        ui::Hint("Turns the same at any FPS (as the game does at 60 FPS). "
-                 "Set X sensitivity back to about 1.0 with this on.");
+        ui::Hint("Turning speed no longer drops at high FPS.");
         ImGui::Checkbox("Remove mouselook axis dead-zone", &cfg.remove_deadzone);
-        ui::Hint("The game drops pitch on mostly-horizontal moves (and heading on "
-                 "mostly-vertical ones), which makes diagonal mouselook jumpy.");
+        ui::Hint("Diagonal mouselook no longer snaps to one axis.");
     }
 }
 
@@ -38,8 +35,7 @@ void DrawMenu()
 
 const Feature feature = {
     "Mouse",
-    "Fixes for EverQuest's mouselook: sensitivity multipliers, horizontal turning that doesn't "
-    "weaken at high frame rates, and removal of the dead-zone that makes diagonal moves jumpy.",
+    "Mouselook fixes.",
     "Enable mouse fixes", &cfg.enabled,
     kSettings, std::size(kSettings), ApplyGamePatches, DrawMenu,
 };

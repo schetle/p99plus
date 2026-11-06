@@ -46,7 +46,7 @@ void DrawOffsets(const char* id, ModeSettings& m)
 void DrawOffsetSection()
 {
     OffsetSettings& o = cfg.offset;
-    ui::BeginSection("Offset", "Move the camera's eye position, separately in first and third person.",
+    ui::BeginSection("Offset", "Moves the camera's eye point.",
                      "Enable camera offset", &o.enabled);
 
     ImGui::TextUnformatted("First person");
@@ -64,47 +64,37 @@ void DrawOffsetSection()
     ui::SliderF("Full offset beyond distance", &o.zoom_fade_distance, 5.0f, 100.0f, "%.0f");
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("Zoomed out this far or more, the full offset applies.\n"
-                          "Closer in, it shrinks toward none at your head.");
+        ImGui::SetTooltip("Closer than this, the offset shrinks toward your head.");
     if (o.zoom_fade) {
         const Status st = GetStatus();
         if (st.firstPerson)           ui::Hint("Now: first person");
         else if (st.distance >= 0.0f) ui::Hint("Now: distance %.0f, offset %.0f%%", st.distance, st.percent);
         else                          ui::Hint("Now: not in the world");
     }
-    ui::Hint("Ctrl+click a slider to type a value. Camera collision ignores the offset.");
     ui::EndSection();
 }
 
 void DrawOrbitSection()
 {
     OrbitSettings& o = cfg.orbit;
-    ui::BeginSection("Orbit", "Hold the middle mouse button and drag to rotate the camera around your character "
-                              "without turning them.",
+    ui::BeginSection("Orbit", nullptr,
                      "Middle mouse drag rotates the camera", &o.enabled);
     ImGui::Checkbox("Return camera when you release", &o.return_on_release);
     ImGui::BeginDisabled(o.return_on_release);
     ImGui::Checkbox("Return camera when you move", &o.return_on_move);
     ImGui::EndDisabled();
-    if (o.enabled) {
-        ui::Hint(o.return_on_release ? "The camera swings back when you let go."
-                          : o.return_on_move    ? "The camera swings back when you move, turn or right-click."
-                          :                       "The camera stays put while you run; right-click swings it back.");
-    }
     ui::EndSection();
 }
 
 void DrawFovSection()
 {
     FovSettings& f = cfg.fov;
-    ui::BeginSection("FOV", "Set the field of view. By default it widens to fit your screen instead of cropping the "
-                            "top and bottom, which is what makes ultrawide monitors work.",
+    ui::BeginSection("FOV", "Default widens the view to fit your screen.",
                      "Enable FOV control", &f.enabled);
     ui::SliderF("First-person FOV", &f.first_person, 30.0f, 120.0f, f.first_person > 0.0f ? "%.1f deg" : "default");
     if (ImGui::Button("Reset first-person FOV")) f.first_person = 0.0f;
     ui::SliderF("Third-person FOV", &f.third_person, 30.0f, 120.0f, f.third_person > 0.0f ? "%.1f deg" : "default");
     if (ImGui::Button("Reset third-person FOV")) f.third_person = 0.0f;
-    ui::Hint("Default keeps the 4:3 vertical FOV and widens the horizontal one to your screen.");
     if (const char* problem = FovProblem())
         ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "%s", problem);
     ui::EndSection();
@@ -128,7 +118,7 @@ void OnFrame()
 
 const Feature feature = {
     "Camera",
-    "What the camera sees and where it sits. Each section below has its own switch.",
+    nullptr,
     nullptr, nullptr,
     kSettings, std::size(kSettings), OnFrame, DrawMenu, StashRecords,
 };

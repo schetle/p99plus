@@ -1,6 +1,5 @@
 // The "Overlay" settings and menu section.
 #include "overlay/overlay.h"
-#include "core/app.h"
 #include "core/host.h"
 #include "overlay/widgets.h"
 #include <imgui.h>
@@ -35,21 +34,19 @@ void DrawMenu()
     ImGui::BeginDisabled(capturing);
     if (ImGui::Button("Reset key")) cfg.menu_key = Settings{}.menu_key;
     ImGui::EndDisabled();
-    ui::Hint("Click, then press a key. Hold Ctrl, Shift or Alt for a combo.");
+    ui::Hint("Click, then press a key or combo.");
 
     ImGui::Spacing();
     ImGui::Separator();
     if (ImGui::Button("Reload core")) g_host->requestReload();
-    ui::Hint("Loads %s again without restarting the game; it also reloads by itself when the file "
-             "changes. Settings, including unsaved ones, are kept. Loaded %d time(s) this session.",
-             AppFileName("_core.dll").c_str(), g_host->loadCount);
+    ui::Hint("Also happens automatically when the DLL changes.");
 }
 
 } // namespace
 
 const Feature feature = {
     "Overlay",
-    "Settings for this menu: the key that opens it, the FPS counter and the menu cursor speed.",
+    nullptr,
     nullptr, nullptr,   // always on
     kSettings, std::size(kSettings), nullptr, DrawMenu, Shutdown,
 };
