@@ -1,4 +1,5 @@
 #include "overlay/widgets.h"
+#include "game/ui/custom_window.h"
 #include <imgui.h>
 #include <cstdarg>
 #include <cstdio>
@@ -37,6 +38,31 @@ bool SliderI(const char* label, int* v, int lo, int hi)
     bool r = ImGui::SliderInt("##v", v, lo, hi);
     ImGui::PopID();
     return r;
+}
+
+bool WindowStatusHint(const game::wnd::CustomWindow& w)
+{
+    using game::wnd::Status;
+    switch (w.GetStatus()) {
+    case Status::Unavailable:
+        Hint("Unavailable: the game's window code wasn't found.");
+        return true;
+    case Status::Rejected:
+        Hint("The game rejected the window; off until restart (see the log).");
+        return true;
+    case Status::NotLoaded:
+        Hint("Not in the loaded UI; run /loadskin.");
+        return true;
+    case Status::Stale:
+        Hint("Layout changed; run /loadskin to update the window.");
+        return true;
+    case Status::NotInWorld:
+        Hint("Appears once you're in the world.");
+        return true;
+    case Status::Shown:
+        break;
+    }
+    return false;
 }
 
 void Hint(const char* fmt, ...)
