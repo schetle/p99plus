@@ -12,6 +12,7 @@
 #include <imgui.h>
 #include <imgui_impl_dx9.h>
 #include <imgui_impl_win32.h>
+#include <vector>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
@@ -19,12 +20,15 @@ namespace overlay {
 
 namespace {
 
+struct Ring { ImVec2 a, b; ImU32 color; };
+std::vector<Ring> s_rings;   // Highlight() since the last draw
+constexpr size_t kMaxRings = 16;
+
 IDirect3DDevice9* s_dev = nullptr;
 HWND    s_hwnd = nullptr;
 bool    s_init = false;
 bool    s_initTried = false;
 bool    s_visible = false;
-bool    s_toggleSwallow = false;      // a newly bound toggle key is still held: don't toggle on it
 std::string s_imguiIni;
 constexpr const char* kVisibleKey = "overlay.visible";   // stash: the menu was open at a reload
 
@@ -88,15 +92,21 @@ void Init(IDirect3DDevice9* dev)
     stash::Clear(kVisibleKey);
 }
 
+// Highlight()'s rings, then forgotten: a feature asks again each frame.
+void DrawRings()
+{
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    for (const Ring& r : s_rings) {
+        dl->AddRect(ImVec2(r.a.x - 1, r.a.y - 1), ImVec2(r.b.x + 1, r.b.y + 1), r.color & 0x60ffffff, 3.0f, 0, 4.0f);   // soft glow
+        dl->AddRect(r.a, r.b, r.color, 2.0f, 0, 1.5f);
+    }
+    s_rings.clear();
+}
+
 void PollToggle()
 {
-    static bool prev = false;
-    const bool down = keybind::IsDown(cfg.menu_key);
-    if (keybind::Capturing()) { prev = down; return; }                // the key press is going to the capture
-    if (s_toggleSwallow) { prev = true; s_toggleSwallow = false; }    // freshly bound key is still held
-    if (down && !prev && GetForegroundWindow() == s_hwnd)
-        SetVisible(!s_visible);
-    prev = down;
+    static keybind::Press press;
+    if (press.Poll(cfg.menu_key) && GetForegroundWindow() == s_hwnd) SetVisible(!s_visible);
 }
 
 } // namespace
@@ -133,7 +143,7 @@ void OnPresent(IDirect3DDevice9* dev)
     if (!s_init) { Init(dev); if (!s_init) return; }
 
     PollToggle();
-    if (s_visible) { if (keybind::PollCapture(s_hwnd)) s_toggleSwallow = true; }
+    if (s_visible) keybind::PollCapture(s_hwnd);
     else keybind::CancelCapture();   // closing the menu cancels a capture
 
     ImGui_ImplDX9_NewFrame();
@@ -150,6 +160,7 @@ void OnPresent(IDirect3DDevice9* dev)
         DrawFps();
     }
     DrawBanner();
+    DrawRings();
 
     ImGui::EndFrame();
     ImGui::Render();
@@ -159,6 +170,11 @@ void OnPresent(IDirect3DDevice9* dev)
         dev->EndScene();
     }
     if (closeRequested) SetVisible(false);
+}
+
+void Highlight(float left, float top, float right, float bottom, unsigned int rgba)
+{
+    if (s_rings.size() < kMaxRings) s_rings.push_back({ ImVec2(left, top), ImVec2(right, bottom), (ImU32)rgba });
 }
 
 void PreReset()  { if (s_init) ImGui_ImplDX9_InvalidateDeviceObjects(); }

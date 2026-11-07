@@ -28,4 +28,14 @@ bool Capturing();
 void CancelCapture();
 bool PollCapture(HWND gameWindow);             // true on the frame a binding was just set
 
+// A binding as presses: Poll is true on the frame it goes down. Never while a capture runs, nor
+// for the key a capture has just bound (it is still held when the capture ends). `allowed` false
+// counts as up. Poll once per frame.
+class Press {
+public:
+    bool Poll(const KeyBinding& k, bool allowed = true);
+private:
+    bool prev_ = false, wasCapturing_ = false;
+};
+
 } // namespace keybind

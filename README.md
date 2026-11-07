@@ -22,7 +22,7 @@ A `dinput8.dll` proxy for the EverQuest **Titanium** client that adds an in-game
 
 Download the zip from the [Releases](https://github.com/schetle/p99plus/releases) page, or build it yourself (see [Building](#building)).
 
-Copy `dinput8.dll` and `p99plus_core.dll` into the EverQuest folder, next to `eqgame.exe`. To uninstall, delete both, plus any `p99plus_core.live.*.dll` (a copy the game uses while running); `p99plus.ini`, `p99plus_imgui.ini` and `p99plus.log` can stay or go.
+Copy `dinput8.dll` and `p99plus_core.dll` into the EverQuest folder, next to `eqgame.exe`. To uninstall, delete both, plus any `p99plus_core.live.*.dll` (a copy the game uses while running); `p99plus.ini`, `p99plus_windows.ini`, `p99plus_imgui.ini` and `p99plus.log` can stay or go.
 
 ### Wine / Proton only: enable the override
 
@@ -39,7 +39,7 @@ A "loaded" banner appears at the top of the screen for about 10 seconds after th
 
 Press **Insert** to open the menu. While it's open, the game gets no mouse or keyboard input. The key can be changed under *Overlay → Menu toggle key*. Ctrl+click any slider to type an exact value.
 
-The menu lists the features down the left side; click one to open its page, which starts with a short description. Features that are switched off are greyed in the list. Mouse and Limiter have an **Enable …** checkbox at the top, Zone info and Combat text a **Show …** one, and Nameplates a **Change nameplates** one; switching it off greys out the page and turns the feature off. Camera has a switch per section instead, and Overlay has none.
+The menu lists the features down the left side; click one to open its page, which starts with a short description. Features that are switched off are greyed in the list. Mouse and Limiter have an **Enable …** checkbox at the top, Zone info and Combat text a **Show …** one, Notepad an **Enable the notepad** one, and Nameplates a **Change nameplates** one; switching it off greys out the page and turns the feature off. Camera has a switch per section instead, and Overlay has none.
 
 ### Mouse
 
@@ -91,7 +91,7 @@ The heading and the location come from the messages the game prints when you use
 
 Untick *Enable Pin Location* (under *Last Location* on the page) to remove the checkbox; that also unpins. Esc doesn't close the window, like the target and chat windows.
 
-Drag the window to move it and drag its edges to resize it. Its position and size are saved with your other windows in the character's UI ini (`UI_<character>_<server>.ini`). Untick *Show the zone info window* to remove it.
+Drag the window to move it and drag its edges to resize it. Its position and size are saved in `p99plus_windows.ini`; the first time, it shows up in the middle of the screen. Untick *Show the zone info window* to remove it.
 
 The first time you enter the world, p99plus adds two small files to your skin folder (`UIFiles\<skin>`): `EQUI_P99PlusZoneInfoWnd.xml` and `EQUI_p99plus.xml`. If you switch skins, they are added to the new one. They are safe to delete; they come back on the next load. If the game ever rejects them, your skin loads as usual and the window stays off until you restart the game.
 
@@ -132,6 +132,25 @@ The name labels the game shows over spawns.
 - `Icon size`: in pixels.
 
 Only spells that last a while get an icon; a nuke doesn't. Casting a spell again on the same NPC keeps one icon for it.
+
+### Notepad
+
+A small book icon sits on the screen: your skin's own spellbook button, which opens up when you hover it and stays open while the notepad is. Click it to open or close the notepad, and drag it by its edge to move it. **Ctrl+Shift+N** opens and closes it too (the key can be changed on the Notepad page), and the icon can be hidden there.
+
+The notepad is a window in the game's own style that you can move and resize. On the left is the list of your notes, newest first, each showing its first line (`Untitled note` until you type something). On the right is the selected note: a header with when it was written, the zone and the position you were at (the numbers `/loc` would show) and the character, then the text.
+
+- **New** starts a note, stamped with the time, zone, position and character name, and opens it for typing.
+- **Edit / View** switches between typing in the note and reading it formatted. Picking a note in the list shows it formatted.
+- While typing, **Ctrl+C**, **Ctrl+X** and **Ctrl+V** copy, cut and paste through the Windows clipboard (line breaks kept), **Ctrl+A** selects the whole note, and **Ctrl+Z** / **Ctrl+Y** (or Ctrl+Shift+Z) undo and redo.
+- While the text box has the keyboard (after New or Edit, or a click in it) it has a gold ring, and every key goes to the note, none to the game (Ctrl and Alt combinations included). A click anywhere outside it (another window or the game world), Esc, View or closing the notepad gives the keys back.
+- **Delete** asks once more ("Sure?") before it deletes the note.
+- All your characters share one notebook.
+
+Notes are saved as Markdown files, one per note, in a `notes` folder inside the EverQuest folder (for example `notes\2026-11-06_14-02-11.md`). They are saved a moment after you stop typing, when you pick another note and when you close the notepad. You can open them in any editor; a file you add or change outside the game shows up the next time the notepad opens.
+
+The formatted view shows headings (`#`), bullet and numbered lists, `**bold**`, `*italic*`, `` `code` ``, `> quotes`, `---` rules and `[links](url)` (the link text only), using colours rather than styles. The notes and the list use the game's own font.
+
+Like the zone info window, the notepad is added to your skin the first time you enter the world; after you update p99plus, type `/loadskin <your skin>` once in the game. Its icon and window keep their position and size (`p99plus_windows.ini`); the first time, each shows up in the middle of the screen.
 
 ### Limiter
 

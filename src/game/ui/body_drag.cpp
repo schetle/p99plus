@@ -2,9 +2,14 @@
 // when it isn't sizable (a sizable one only moves by its title bar), and a bordered, sizable window
 // of ours has no title bar. For windows with `dragByBody` a client-area click takes the
 // not-sizable path; the border still resizes them, and every other window is left alone.
+//
+// The cursor: the game shows the drag cursor over the whole of a window that isn't sizable (a click
+// anywhere moves it). For ours, which have pictures and buttons to click, that only shows near the
+// edge, like the frame of a game window; the body still drags.
 #include "core/log.h"
 #include "game/eqgame.h"
 #include "game/ui/detail.h"
+#include "game/ui/sidl_xml.h"
 #include "util/hook.h"
 #include "util/mem.h"
 #include <cstring>
@@ -42,12 +47,40 @@ _p99_DragStub:
 extern "C" bool __cdecl p99_DragByBody(uintptr_t wnd)
 {
     hook::Busy busy;
-    for (const game::wnd::CustomWindow* w : game::wnd::detail::Registry())
+    for (game::wnd::CustomWindow* w : game::wnd::detail::Registry())
         if (w->Def().dragByBody && game::wnd::detail::Access::Handle(*w).ptr() == wnd) return true;
     return false;
 }
 
 namespace game::wnd::detail {
+
+namespace {
+
+constexpr int kEdgeBand = 4;   // px from the window's edge that show the drag cursor
+
+using Cursor_t = void* (__thiscall*)(void* wnd);
+Cursor_t oCursor = nullptr;
+
+void* __fastcall Hk_Cursor(void* self, void* /*edx*/)
+{
+    hook::Busy busy;
+    const uintptr_t mgrRef = mem::Read<uintptr_t>(game::addr::kWndMgrRef);
+    const uintptr_t mgr = mgrRef < 0x10000 ? 0 : mem::Read<uintptr_t>(mgrRef);
+    if (mgr >= 0x10000) {
+        for (const CustomWindow* w : Registry()) {
+            if (!w->Def().dragByBody || Access::Handle(*w).ptr() != (uintptr_t)self || sidl::IsSizable(w->Def().xml)) continue;
+            int l, t, r, b;
+            Access::Handle(*w).Rect(l, t, r, b);
+            const int x = mem::Read<int>(mgr + kMgrMouse), y = mem::Read<int>(mgr + kMgrMouse + 4);
+            if (x >= l + kEdgeBand && x < r - kEdgeBand && y >= t + kEdgeBand && y < b - kEdgeBand)
+                return mem::Read<void*>(mgr + kMgrDefaultCursor);
+            break;
+        }
+    }
+    return oCursor(self);
+}
+
+} // namespace
 
 bool InstallBodyDrag()
 {
@@ -69,6 +102,7 @@ bool InstallBodyDrag()
         return false;
     }
     Log("body drag: patched at %p", at);
+    hook::Install("window cursor", (void*)kWndCursor, (void*)&Hk_Cursor, (void**)&oCursor, kWndCursorPrologue);
     return true;
 }
 

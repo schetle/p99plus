@@ -4,6 +4,7 @@
 #include "features/limiter/limiter.h"
 #include "features/mouse/mouse.h"
 #include "features/nameplates/nameplates.h"
+#include "features/notepad/notepad.h"
 #include "features/zoneinfo/zone_info.h"
 #include "game/eqchat.h"
 #include "game/eqgame.h"
@@ -21,6 +22,7 @@ const std::vector<const Feature*>& All()
         &mouse::feature,
         &camera::feature,
         &zoneinfo::feature,
+        &notepad::feature,
         &combattext::feature,
         &nameplates::feature,
         &limiter::feature,

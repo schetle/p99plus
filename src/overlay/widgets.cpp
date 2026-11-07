@@ -3,6 +3,7 @@
 #include <imgui.h>
 #include <cstdarg>
 #include <cstdio>
+#include <string>
 
 namespace ui {
 
@@ -20,6 +21,24 @@ void RowLabel(const char* label)
     ImGui::TextUnformatted(label);
     ImGui::SameLine(LabelColumn());
     ImGui::SetNextItemWidth(-FLT_MIN);
+}
+
+void KeyBindingRow(const char* label, KeyBinding& key, const KeyBinding& defaultKey)
+{
+    const bool capturing = keybind::Capturing();
+    RowLabel(label);
+    ImGui::PushID(label);
+    ImGui::SetNextItemWidth(0);
+    const std::string text = (capturing ? "Press a key... (Esc cancels)" : keybind::Name(key)) + "###key";
+    if (ImGui::Button(text.c_str()) && !capturing) {
+        ImGui::GetIO().ClearInputKeys();   // keyboard feed pauses during capture; don't leave keys held
+        keybind::BeginCapture(&key);
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(capturing);
+    if (ImGui::Button("Reset key")) key = defaultKey;
+    ImGui::EndDisabled();
+    ImGui::PopID();
 }
 
 bool SliderF(const char* label, float* v, float lo, float hi, const char* fmt)

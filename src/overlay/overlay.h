@@ -20,6 +20,10 @@ extern const Feature feature;
 bool Visible();
 void SetVisible(bool visible);
 
+// A ring drawn around a rectangle of the screen this frame (over the game's UI). Features call it
+// from onFrame, which runs before the overlay draws.
+void Highlight(float left, float top, float right, float bottom, unsigned int rgba);
+
 // Called from the Direct3D hooks (render/dispatch.cpp).
 void OnPresent(IDirect3DDevice9* dev);
 void PreReset();

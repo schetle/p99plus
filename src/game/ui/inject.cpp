@@ -9,6 +9,7 @@
 #include "game/ui/xstr.h"
 #include "util/hook.h"
 #include "util/mem.h"
+#include <windows.h>
 #include <algorithm>
 #include <cctype>
 #include <cstring>
@@ -19,17 +20,27 @@ namespace game::wnd::detail {
 
 InjectState g_inject = {};
 
+std::string MergedFile() { return std::string("EQUI_") + kAppName + ".xml"; }
+std::string ScreenFile(const CustomWindowDef& d) { return "EQUI_" + d.screen + ".xml"; }
+std::string DefaultSkin() { return g_gameDir + "UIFiles\\Default\\"; }
+
+bool ReadText(const std::string& path, std::string& out)
+{
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return false;
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    out = ss.str();
+    return true;
+}
+
 namespace {
 
 using Loader_t = int (__thiscall*)(void* self, const void* dir, const void* second, const void* file);
 Loader_t oLoader = nullptr;
 
-const std::string kMergedFile = std::string("EQUI_") + kAppName + ".xml";
-
 struct SkinStash { char path[260]; };
 constexpr const char* kSkinKey = "wnd.skin";
-
-std::string FileName(const CustomWindowDef& d) { return "EQUI_" + d.screen + ".xml"; }
 
 unsigned Hash(const char* data, size_t n, unsigned h)
 {
@@ -37,13 +48,8 @@ unsigned Hash(const char* data, size_t n, unsigned h)
     return h;
 }
 
-// What a UI load takes in of a window: its XML and the files next to it.
-unsigned Hash(const CustomWindowDef& d)
-{
-    unsigned h = Hash(d.xml.data(), d.xml.size(), 2166136261u);
-    for (const CustomFile& f : d.files) h = Hash(f.content.data(), f.content.size(), h);
-    return h;
-}
+// What a UI load takes in of a window: its XML.
+unsigned Hash(const CustomWindowDef& d) { return Hash(d.xml.data(), d.xml.size(), 2166136261u); }
 
 void NoteLoaded()
 {
@@ -58,21 +64,11 @@ void NoteLoaded()
     }
 }
 
-bool ReadFile(const std::string& path, std::string& out)
-{
-    std::ifstream f(path, std::ios::binary);
-    if (!f) return false;
-    std::ostringstream ss;
-    ss << f.rdbuf();
-    out = ss.str();
-    return true;
-}
-
 // Replaces the file only when its content differs, so a normal start touches nothing.
 bool WriteIfChanged(const std::string& path, const std::string& content)
 {
     std::string current;
-    if (ReadFile(path, current) && current == content) return true;
+    if (ReadText(path, current) && current == content) return true;
     std::ofstream f(path, std::ios::binary | std::ios::trunc);
     if (!f) return false;
     f << content;
@@ -106,7 +102,7 @@ bool WriteInjected(const std::string& dir)
     }
 
     std::string equi;
-    if (!ReadFile(skin + "EQUI.xml", equi) && !ReadFile(g_gameDir + "UIFiles\\Default\\EQUI.xml", equi)) {
+    if (!ReadText(skin + "EQUI.xml", equi) && !ReadText(DefaultSkin() + "EQUI.xml", equi)) {
         Log("custom windows: EQUI.xml not found in '%s'", dir.c_str());
         return false;
     }
@@ -117,15 +113,17 @@ bool WriteInjected(const std::string& dir)
     }
 
     std::string includes;
-    for (const CustomWindow* w : Registry()) includes += "\t\t<Include>" + FileName(w->Def()) + "</Include>\n";
+    for (const CustomWindow* w : Registry()) includes += "\t\t<Include>" + ScreenFile(w->Def()) + "</Include>\n";
     const std::string merged = equi.substr(0, end) + includes + equi.substr(end);
 
-    bool ok = WriteIfChanged(skin + kMergedFile, merged);
-    for (const CustomWindow* w : Registry()) {
-        const CustomWindowDef& d = w->Def();
-        ok = WriteIfChanged(skin + FileName(d), d.xml) && ok;
-        for (const CustomFile& f : d.files) ok = WriteIfChanged(skin + f.name, f.content) && ok;
+    const std::string frame = TitledFrame(skin);
+    static std::string s_loggedFrame;
+    if (frame != s_loggedFrame) {
+        Log("custom windows: titled windows use this skin's %s", frame.c_str());
+        s_loggedFrame = frame;
     }
+    bool ok = WriteIfChanged(skin + MergedFile(), merged);
+    for (const CustomWindow* w : Registry()) ok = WriteIfChanged(skin + ScreenFile(w->Def()), ForSkin(w->Def().xml, frame, skin)) && ok;
     if (!ok) Log("custom windows: could not write to '%s'", skin.c_str());
     return ok;
 }
@@ -147,7 +145,7 @@ int __fastcall Hk_Loader(void* self, void* /*edx*/, const void* dir, const void*
 
     if (!WriteInjected(XStrToString((uintptr_t)dir))) return oLoader(self, dir, second, file);
 
-    const XStr merged(kMergedFile.c_str());
+    const XStr merged(MergedFile().c_str());
     const int r = oLoader(self, dir, second, merged.get());
     if (mem::Read<unsigned char>((uintptr_t)self + sidlmgr::kLoaderFailed) == 0) {
         Log("custom windows: UI loaded with %zu added window(s)", Registry().size());
@@ -155,11 +153,16 @@ int __fastcall Hk_Loader(void* self, void* /*edx*/, const void* dir, const void*
         return r;
     }
 
-    // The game rejected our XML. Load the skin as it is, and leave it alone from now on.
+    // The game rejected our XML. Hand the failure back: the caller (0x442d80) then tears the UI down
+    // and loads the Default skin, which passes through here untouched now. Loading the plain skin
+    // again here, into the half-filled loader with no reset, failed as well and left it corrupt, so
+    // the game's own fallback failed too and the client quit ("Error in your GUI XML files").
     g_inject.failed = true;
     g_inject.numLoaded = 0;
-    Log("custom windows: the game rejected the added windows; loading the plain skin (custom windows off)");
-    return oLoader(self, dir, second, file);
+    Log("custom windows: the game rejected the added windows (\"%s\"); custom windows are off until the game restarts, "
+        "and the game falls back to the Default skin",
+        XStrToString((uintptr_t)self + sidlmgr::kLoaderError).c_str());
+    return r;
 }
 
 } // namespace

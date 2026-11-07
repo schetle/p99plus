@@ -39,6 +39,21 @@ inline constexpr uintptr_t kPitchDrop    = 0x65fb2c;   // float the controllers 
 // UI windows. Every window built from an XML screen is a CSidlScreenWnd, and every derived
 // destructor ends in kSidlDtor.
 inline constexpr uintptr_t kSidlDtor      = 0x5a3100;  // void __thiscall(wnd): base-class destructor
+// Where windows are, the mouse and the keys.
+inline constexpr uintptr_t kWindowAt      = 0x5ae730;  // CXWnd* __thiscall(manager, const POINT* screen, int* hitCode), ret 8: the
+                                                       // window under a point, 0 for none (the game world); keeps a one-point cache
+inline constexpr uintptr_t kScreenRect    = 0x59d960;  // int* __thiscall(wnd, int rect[4]), ret 4: left, top, right, bottom on screen
+                                                       // (anchored children too, from the parent's client rect)
+inline constexpr uintptr_t kMoveWnd       = 0x59fb00;  // void __thiscall(wnd, const int rect[4]), ret 4: CXWnd::Move to left, top,
+                                                       // right, bottom (refused below the minimum size); lays out the children
+inline constexpr uintptr_t kScreenWidth   = 0x92379c;  // int: the UI's screen size (0x5595db reads both; the UI ini's XPos<w>x<h>)
+inline constexpr uintptr_t kScreenHeight  = 0x9237a0;
+inline constexpr uintptr_t kWndCursor     = 0x59d150;  // void* __thiscall(wnd): the cursor to show over it (vtable +0x30, every
+                                                       // window class we build). Sizable: drag on the title bar, resize on the
+                                                       // edges, default inside; not sizable: drag over the whole window
+inline constexpr uintptr_t kWndMgrRef     = 0x99d334;  // CXWndManager**: how kWndCursor reaches the UI manager
+inline constexpr uintptr_t kKeyboardMsg   = 0x5ae430;  // int __thiscall(manager, int scancode, int down), ret 8: the UI's turn at a key;
+                                                       // 0 = the UI took it (a key down then skips the game's own handling, 0x4b23e9)
 // The UI manager: its first list (count +0x4, CXWnd** +0x8) holds every live window, children included.
 inline constexpr uintptr_t kWndManager    = 0x99d3ec;
 // Building a window of our own (the same steps as the map and inventory constructors).
@@ -49,6 +64,15 @@ inline constexpr uintptr_t kButtonSetCheck = 0x5bb140; // void __thiscall(button
 inline constexpr uintptr_t kGetChildItem  = 0x5a1e10;  // CXWnd* __thiscall(wnd, const CXStr& screenId), ret 4
 inline constexpr uintptr_t kXStrCtor      = 0x571e00;  // void __thiscall(CXStr* slot, const char*), ret 4
 inline constexpr uintptr_t kXStrFree      = 0x571d00;  // void __thiscall(CXStr* slot, rep), ret 4
+// Controls (notes/internals/ui-windows.md, "Notepad controls").
+inline constexpr uintptr_t kListAddString = 0x59b9d0;  // int __thiscall(list, const CXStr* text, ARGB color, int data, void* anim), ret 0x10: the new row
+inline constexpr uintptr_t kListGetCurSel = 0x597be0;  // int __thiscall(list): the selected row, -1 for none
+inline constexpr uintptr_t kListSetCurSel = 0x597c20;  // void __thiscall(list, int row), ret 4
+inline constexpr uintptr_t kSetFocusWnd   = 0x5ae0f0;  // CXWnd* __thiscall(manager, CXWnd* wnd or 0), ret 4: tells the old focus window
+                                                       // (+0xa8), stores manager +0x44, tells the new one (+0xa4)
+inline constexpr uintptr_t kEditInsert    = 0x5b90e0;  // void __thiscall(edit, CXStr text, int), ret 8: replaces the selection with
+                                                       // `text` (at the cursor if none); the callee frees the CXStr (paste passes 0)
+inline constexpr uintptr_t kStmlSetText   = 0x5a8b00;  // void __thiscall(stml, CXStr text, int, int), ret 0xc; the callee frees the CXStr (stock calls pass 1, 0)
 // UI (re)load. The XML is parsed by the loader, which frees every earlier definition first, so a
 // screen exists only if it came in with the EQUI.xml load. kBuildGameUi then creates the in-world
 // windows; kResetGameUi deletes them all (log line "Resetting game UI.").
@@ -154,6 +178,17 @@ inline constexpr int kShow = 0xc0;          // vtable offset: Show(bool show, bo
 inline constexpr int kChecked = 0x128;      // in a button: checked (pressed in); a Style_Checkbox button flips it on click
 inline constexpr int kSetText = 0xfc;       // vtable offset: SetWindowText(const CXStr&), ret 4
 inline constexpr int kStoreIni = 0x11c;     // vtable offset: StoreIniInfo(), writes position/size to the UI ini
+inline constexpr int kListDeleteAll = 0x130;// vtable offset in a list: DeleteAll(), no arguments
+inline constexpr int kRect = 0x3c;         // ints: the location rect on screen, left, top, right, bottom
+inline constexpr int kWindowText = 0x74;    // CXStr: the window's text (what an Editbox holds while it is typed in)
+inline constexpr int kEditMaxChars = 0x128; // in an Editbox: int, the longest text it takes (-1 = no limit)
+inline constexpr int kEditSelStart = 0x120, kEditSelEnd = 0x124;   // in an Editbox: ints, the selection (equal: the cursor), in characters
+inline constexpr int kMgrDefaultCursor = 0x134;   // in the UI manager: the cursor kWndCursor returns for "nothing special"
+inline constexpr int kMgrMouse = 0x74;      // in the UI manager: POINT, the cursor on screen (what a click is tested at)
+inline constexpr int kMgrFocus = 0x44;      // in the UI manager: the window with the keyboard focus (0x5ae150 returns it)
+inline constexpr unsigned kEditReturnNewline = 0x40000;   // style bit of an Editbox: Enter types a line break (0x0a); without it
+                                                           // Enter tells the parent (notification 6). Style_Multiline doesn't set it
+                                                           // (key handler 0x5b9730, Enter case 0x5b99b8)
 inline constexpr int kSidlSize = 0x15c;     // sizeof(CSidlScreenWnd)
 inline constexpr int kMgrCount = 0x4;       // in the UI manager: number of live windows
 inline constexpr int kMgrItems = 0x8;       // in the UI manager: CXWnd** to them
@@ -167,11 +202,13 @@ inline constexpr int kIniMode = 2;
 // The SIDL manager (the object the UI loader is called on).
 namespace sidlmgr {
 inline constexpr int kLoaderFailed = 0x260;   // byte the loader sets when it fails ("Error reading XML.")
+inline constexpr int kLoaderError = 0x264;    // CXStr: the parser's message for it (0x442d80 logs it as "UI ERROR: %s")
 } // namespace sidlmgr
 
 // A CXStr is a pointer to { ..., int length at +0x8, chars at +0x14 }.
 namespace xstr {
-inline constexpr int kLength = 0x8, kChars = 0x14;
+inline constexpr int kLength = 0x8, kChars = 0x14;   // length in characters
+inline constexpr int kEncoding = 0xc;   // 0: 8-bit characters, 1: UTF-16 (what an Editbox holds while typed in; verified live)
 } // namespace xstr
 
 // Fields of a camera controller (see kCameraCtrls).
@@ -189,6 +226,8 @@ inline constexpr unsigned char kCollideLinePrologue[] = { 0x55, 0x8b, 0xec, 0x83
 
 // push -1; push <seh handler>; mov eax, fs:[0]
 inline constexpr unsigned char kSidlDtorPrologue[] = { 0x6a, 0xff, 0x68, 0x42, 0x2f, 0x63, 0x00, 0x64, 0xa1 };
+// sub esp,0x10; push ebx; push ebp; push esi; mov esi,ecx
+inline constexpr unsigned char kKeyboardMsgPrologue[] = { 0x83, 0xec, 0x10, 0x53, 0x55, 0x56, 0x8b, 0xf1 };
 
 // push -1; push <seh handler>; mov eax, fs:[0]
 inline constexpr unsigned char kUiLoaderPrologue[] = { 0x6a, 0xff, 0x68, 0x5d, 0x3f, 0x63, 0x00, 0x64, 0xa1 };
@@ -197,6 +236,8 @@ inline constexpr unsigned char kBuildGameUiPrologue[] = { 0xb8, 0x72, 0x63, 0x62
 // push esi; push edi; push <"Resetting game UI.">
 inline constexpr unsigned char kResetGameUiPrologue[] = { 0x56, 0x57, 0x68, 0xf8, 0x25, 0x64, 0x00 };
 
+// mov eax,[0x99d334]; sub esp,0xc; push esi
+inline constexpr unsigned char kWndCursorPrologue[] = { 0xa1, 0x34, 0xd3, 0x99, 0x00, 0x83, 0xec, 0x0c, 0x56 };
 inline constexpr unsigned char kDragSizableTestBytes[] = { 0x8b, 0x57, 0x64, 0xf6, 0xc6, 0x02, 0x75, 0x59 };
 
 // push ebp; mov eax,0x13c4; lea ebp,[esp-0x134c]
@@ -277,6 +318,11 @@ bool      SpawnLabel(uintptr_t spawnBase, Label& label);
 bool ZoneName(std::string& name);
 // The zone id the character is in (instance bits removed), or 0.
 int ZoneId();
+// Where the character stands, as /loc prints it: "-975.37, -1.51, -0.49" (the game's own order
+// and two decimals; the command reads the spawn at x, y and kCamZ). False when there is no character.
+bool PlayerLocText(std::string& text);
+// The character's name. False when there is no character.
+bool PlayerName(std::string& name);
 // The in-world UI is built (between kBuildGameUi and kResetGameUi): the character is in a zone
 // that has finished loading. False at character select and while zoning.
 bool InWorld();

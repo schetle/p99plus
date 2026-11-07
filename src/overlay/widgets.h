@@ -1,5 +1,7 @@
 #pragma once
 // Menu widgets shared by every feature's section.
+#include "util/keybinding.h"
+
 namespace game::wnd { class CustomWindow; }
 
 namespace ui {
@@ -10,6 +12,10 @@ namespace ui {
 void RowLabel(const char* label);
 bool SliderF(const char* label, float* v, float lo, float hi, const char* fmt);
 bool SliderI(const char* label, int* v, int lo, int hi);
+
+// A key binding row: a button showing the key (click it, then press a key or combo) and a button
+// that puts `defaultKey` back.
+void KeyBindingRow(const char* label, KeyBinding& key, const KeyBinding& defaultKey);
 
 // Greyed-out text that wraps at the window edge (printf-style). Use for descriptions and hints;
 // don't add manual line breaks.

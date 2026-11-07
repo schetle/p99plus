@@ -121,4 +121,14 @@ bool PollCapture(HWND gameWindow)
     return false;
 }
 
+bool Press::Poll(const KeyBinding& k, bool allowed)
+{
+    const bool down = allowed && IsDown(k);
+    const bool capturing = Capturing();
+    const bool pressed = down && !prev_ && !capturing && !wasCapturing_;
+    prev_ = down;
+    wasCapturing_ = capturing;
+    return pressed;
+}
+
 } // namespace keybind

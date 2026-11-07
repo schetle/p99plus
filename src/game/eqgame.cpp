@@ -4,6 +4,7 @@
 #include "util/mem.h"
 #include <windows.h>
 #include <algorithm>
+#include <cstdio>
 
 namespace game {
 
@@ -241,6 +242,37 @@ int ZoneId()
     if (!player) return 0;
     const int id = mem::Read<int>(player + spawn::kZoneId) & 0xffff;
     return (id >= 1 && id <= zonelist::kMaxId) ? id : 0;
+}
+
+bool PlayerLocText(std::string& text)
+{
+    const uintptr_t player = PlayerBase();
+    if (!player) return false;
+    const float x = mem::Read<float>(player + spawn::kX), y = mem::Read<float>(player + spawn::kY),
+                z = mem::Read<float>(player + spawn::kCamZ);
+    auto sane = [](float v) { return v == v && v > -1e7f && v < 1e7f; };   // not NaN, not garbage
+    if (!sane(x) || !sane(y) || !sane(z)) return false;
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%.2f, %.2f, %.2f", x, y, z);
+    text = buf;
+    return true;
+}
+
+bool PlayerName(std::string& name)
+{
+    const uintptr_t player = PlayerBase();
+    if (!player) return false;
+    char buf[0x40];
+    size_t n = 0;
+    for (; n < sizeof(buf) - 1; ++n) {
+        const char c = mem::Read<char>(player + spawn::kName + n);
+        if (c == '\0') break;
+        if (c < 0x20 || c > 0x7e) return false;
+        buf[n] = c;
+    }
+    if (n == 0 || n == sizeof(buf) - 1) return false;
+    name.assign(buf, n);
+    return true;
 }
 
 bool InWorld() { return s_ok && mem::Read<uintptr_t>(addr::kInventoryWnd) != 0; }

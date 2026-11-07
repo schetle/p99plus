@@ -4,6 +4,7 @@
 #include "game/eqgame.h"
 #include "game/ui/detail.h"
 #include "game/ui/driver.h"
+#include "input/input.h"
 #include "util/hook.h"
 #include "util/mem.h"
 #include <algorithm>
@@ -46,6 +47,13 @@ void CustomWindow::Attach(Wnd w)
     controls_.clear();
 }
 
+void CustomWindow::SetShown(bool shown)
+{
+    if (!wnd_ || wnd_.Visible() == shown) return;
+    if (shown) wnd_.Activate();
+    else wnd_.Show(false);
+}
+
 CustomWindow::Control* CustomWindow::Find(const char* id)
 {
     if (!wnd_) return nullptr;
@@ -55,27 +63,114 @@ CustomWindow::Control* CustomWindow::Find(const char* id)
     return &controls_.back();
 }
 
-void CustomWindow::SetText(const char* id, const std::string& text)
+void CustomWindow::SetText(const char* id, const std::string& text, bool force)
 {
     Control* c = Find(id);
-    if (!c || !c->wnd || c->text == text) return;
+    if (!c || !c->wnd || (!force && c->text == text)) return;
     c->wnd.SetText(text.c_str());
     c->text = text;
+}
+
+std::string CustomWindow::Text(const char* id, int maxLength)
+{
+    Control* c = Find(id);
+    return c && c->wnd ? c->wnd.Text(maxLength) : std::string();
+}
+
+Wnd CustomWindow::Child(const char* id)
+{
+    Control* c = Find(id);
+    return c ? c->wnd : Wnd();
 }
 
 void CustomWindow::ShowChild(const char* id, bool show)
 {
     Control* c = Find(id);
-    if (!c || !c->wnd || c->shown == (int)show) return;
+    if (!c || !c->wnd || c->shown == show) return;
     c->wnd.Show(show);
     c->shown = show;
+}
+
+void CustomWindow::SetMaxChars(const char* id, int n)
+{
+    Control* c = Find(id);
+    if (!c || !c->wnd || c->maxChars == n) return;
+    c->wnd.SetMaxChars(n);
+    c->maxChars = n;
+}
+
+void CustomWindow::AddStyle(const char* id, unsigned bits)
+{
+    Control* c = Find(id);
+    if (!c || !c->wnd || (c->styled & bits) == bits) return;
+    c->wnd.AddStyle(bits);
+    c->styled |= bits;
+}
+
+void CustomWindow::SetStml(const char* id, const std::string& stml)
+{
+    Control* c = Find(id);
+    if (!c || !c->wnd || c->stml == stml) return;
+    c->wnd.SetStml(stml.c_str());
+    c->stml = stml;
+}
+
+void CustomWindow::SetList(const char* id, const std::vector<std::string>& rows, int selected)
+{
+    Control* c = Find(id);
+    if (!c || !c->wnd) return;
+    const bool newRows = c->rows != rows;
+    if (newRows) {
+        c->wnd.ListClear();
+        for (const std::string& r : rows) c->wnd.ListAdd(r.c_str());
+        c->rows = rows;
+    }
+    if (newRows || c->selected != selected) {
+        c->wnd.ListSelect(selected);
+        c->selected = selected;
+    }
+}
+
+int CustomWindow::ListSelection(const char* id)
+{
+    Control* c = Find(id);
+    return c && c->wnd ? c->wnd.ListSelection() : -1;
+}
+
+bool CustomWindow::Clicked(const char* id)
+{
+    Control* c = Find(id);
+    if (!c || !c->wnd) return false;
+    const bool down = input::Button(0);
+    const bool pressed = down && !c->mouseWasDown, released = !down && c->mouseWasDown;
+    c->mouseWasDown = down;
+    if (!pressed && !released) return false;
+    int x, y, l, t, r, b;
+    const Wnd under = Wnd::UnderCursor();
+    const bool over = wnd_.Visible() && (under == wnd_ || under == c->wnd) && Wnd::CursorPos(x, y) &&
+                      c->wnd.ScreenRect(l, t, r, b) && x >= l && x < r && y >= t && y < b;
+    if (pressed) {
+        c->armed = over;
+        return false;
+    }
+    const bool click = c->armed && over;
+    c->armed = false;
+    return click;
+}
+
+void CustomWindow::SetCheck(const char* id, bool on)
+{
+    // While the mouse holds the button the game owns the byte: it is the pressed look (1 on the
+    // press, then "still inside" as the mouse moves, 0 on the release), and setting it then flickers.
+    Control* c = Find(id);
+    if (c && c->wnd && !c->armed && c->wnd.Checked() != on) c->wnd.SetChecked(on);
 }
 
 bool CustomWindow::BindCheck(const char* id, bool& value)
 {
     Control* c = Find(id);
     if (!c || !c->wnd) return false;
-    if (c->checked != (int)value) {   // new window, or the code changed the value
+    if (c->checked != value) {   // new window, or the code changed the value
         c->wnd.SetChecked(value);
         c->checked = value;
         return false;
@@ -116,12 +211,13 @@ constexpr const char* kStashKey = "wnd.custom";
 Kept s_kept[detail::kMaxWindows];
 int  s_numKept = 0;   // from the previous core, not yet taken over (see Adopt)
 
-// `store`: write the window's position and size to the character's UI ini first, as the game does
-// for its own windows when it saves the UI, so the next one built is where this one was.
+// Our file gets the window's place first (placement.cpp). `store`: also write the character's UI
+// ini, as the game does for its own windows when it saves the UI (fades, alpha and the like).
 void Destroy(CustomWindow& cw, bool store)
 {
     const Wnd w = Access::Handle(cw);
     if (!w) return;
+    detail::SavePlacement(cw);
     if (store) w.StoreIni();
     w.Delete();
     Access::Attach(cw, Wnd());
@@ -144,7 +240,8 @@ void Create(CustomWindow& cw)
     }
     Access::Attach(cw, w);
     ApplyFlags(cw);
-    w.Activate();
+    detail::RestorePlacement(cw);
+    if (!cw.Def().startHidden) w.Activate();
     Log("custom window %s: created", cw.Def().screen.c_str());
 }
 
@@ -174,8 +271,9 @@ void Adopt()
         }
         Access::Attach(*owner, w);
         ApplyFlags(*owner);
+        detail::AdoptPlacement(*owner);
         // Hidden by the game (Esc, before closeOnEsc existed): it is wanted, so show it again.
-        if (Access::Wanted(*owner) && !w.Visible()) w.Activate();
+        if (Access::Wanted(*owner) && !owner->Def().startHidden && !w.Visible()) w.Activate();
         Log("custom window %s: kept from the previous core", k.screen);
     }
     s_numKept = 0;
@@ -261,6 +359,7 @@ void Shutdown()
     st.inject = detail::g_inject;
     for (const CustomWindow* w : Registry()) {
         const Wnd h = Access::Handle(*w);
+        detail::SavePlacement(*w);
         if (!h || st.numKept == detail::kMaxWindows) continue;
         Kept& k = st.kept[st.numKept++];
         k.wnd = h.ptr();
@@ -278,6 +377,7 @@ void Tick()
         const bool exists = (bool)Access::Handle(*w);
         if (Access::Wanted(*w) && !exists && !Access::Failed(*w)) Create(*w);
         else if (!Access::Wanted(*w) && exists) Destroy(*w, true);
+        else if (exists) detail::TrackPlacement(*w);
     }
 }
 

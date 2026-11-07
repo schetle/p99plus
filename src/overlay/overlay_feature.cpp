@@ -22,18 +22,7 @@ void DrawMenu()
     ImGui::Checkbox("Show FPS when menu hidden", &cfg.show_fps);
     ui::SliderF("Cursor speed", &cfg.cursor_speed, 0.1f, 5.0f, "%.2f");
 
-    const bool capturing = keybind::Capturing();
-    const std::string label = (capturing ? "Press a key... (Esc cancels)" : keybind::Name(cfg.menu_key)) + "###menukey";
-    ui::RowLabel("Menu toggle key");
-    ImGui::SetNextItemWidth(0);
-    if (ImGui::Button(label.c_str()) && !capturing) {
-        ImGui::GetIO().ClearInputKeys();   // keyboard feed pauses during capture; don't leave keys held
-        keybind::BeginCapture(&cfg.menu_key);
-    }
-    ImGui::SameLine();
-    ImGui::BeginDisabled(capturing);
-    if (ImGui::Button("Reset key")) cfg.menu_key = Settings{}.menu_key;
-    ImGui::EndDisabled();
+    ui::KeyBindingRow("Menu toggle key", cfg.menu_key, Settings{}.menu_key);
     ui::Hint("Click, then press a key or combo.");
 
     ImGui::Spacing();
