@@ -19,7 +19,7 @@ void Hint(const char* fmt, ...);
 // to do). False when it can, so the caller can print its own hint instead.
 bool WindowStatusHint(const game::wnd::CustomWindow& w);
 
-// A switchable group of controls inside a tab: heading, description, the enable checkbox, then
+// A switchable group of controls inside a page: heading, description, the enable checkbox, then
 // the controls up to EndSection, greyed out while the switch is off. `enabled` may be nullptr
 // for a group that can't be switched off.
 void BeginSection(const char* title, const char* description, const char* enableLabel, bool* enabled);

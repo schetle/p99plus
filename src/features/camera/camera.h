@@ -1,5 +1,5 @@
 #pragma once
-// Camera control: eye offset, middle-drag orbit and FOV (one tab, three switchable sections).
+// Camera control: eye offset, middle-drag orbit and FOV (one page, three switchable sections).
 //
 // The offset eye (and orbit angles) are written into the engine's own camera object, so name
 // tags, spell effects and mouse picking all agree with what is drawn. The FOV is rewritten in
@@ -44,7 +44,7 @@ struct Settings {
 };
 extern Settings cfg;
 
-extern const Feature feature;      // the "Camera" tab
+extern const Feature feature;      // the "Camera" page
 
 // What the camera is doing right now, for the menu.
 struct Status { bool firstPerson; bool fadeActive; float distance; float percent; };

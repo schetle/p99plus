@@ -5,14 +5,72 @@
 #include "core/host.h"
 #include "overlay/overlay.h"
 #include "overlay/widgets.h"
+#include <algorithm>
+#include <cfloat>
 #include <cstdio>
+#include <cstring>
 #include <imgui.h>
 
 namespace overlay {
 
 namespace {
 
-// One feature's tab: description, the enable checkbox, then its controls (greyed out while disabled).
+constexpr float kPageMinWidth = 320.0f;   // the menu never gets narrower than sidebar + this
+constexpr float kMinHeight = 300.0f;
+
+// The selected page survives a core reload by title (the feature list may change between builds).
+struct PageStash { char title[32]; };
+constexpr const char* kPageKey = "overlay.menu.page";
+const Feature* s_page = nullptr;
+
+bool Listed(const Feature* f) { return f->title && f->drawMenu; }
+bool Off(const Feature* f) { return f->enabled && !*f->enabled; }
+
+void SelectPage(const Feature* f)
+{
+    s_page = f;
+    PageStash st = {};
+    snprintf(st.title, sizeof(st.title), "%s", f->title);
+    stash::PutValue(kPageKey, st);
+}
+
+// After a reload: the page that was open, else the first one.
+const Feature* CurrentPage()
+{
+    if (s_page) return s_page;
+    PageStash st = {};
+    const bool had = stash::GetValue(kPageKey, st);
+    for (const Feature* f : feature::All()) {
+        if (!Listed(f)) continue;
+        if (!s_page) s_page = f;
+        if (had && strcmp(f->title, st.title) == 0) { s_page = f; break; }
+    }
+    return s_page;
+}
+
+float SidebarWidth()
+{
+    const ImGuiStyle& st = ImGui::GetStyle();
+    float w = 0.0f;
+    for (const Feature* f : feature::All())
+        if (Listed(f)) w = std::max(w, ImGui::CalcTextSize(f->title).x);
+    return w + (st.WindowPadding.x + st.FramePadding.x) * 2.0f;
+}
+
+// The feature list: switched-off features are greyed so their state shows at a glance.
+void DrawSidebar(float width)
+{
+    ImGui::BeginChild("##sidebar", ImVec2(width, 0), ImGuiChildFlags_Borders);
+    for (const Feature* f : feature::All()) {
+        if (!Listed(f)) continue;
+        if (Off(f)) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        if (ImGui::Selectable(f->title, f == s_page) && f != s_page) SelectPage(f);
+        if (Off(f)) ImGui::PopStyleColor();
+    }
+    ImGui::EndChild();
+}
+
+// One feature's page: description, the enable checkbox, then its controls (greyed out while disabled).
 void DrawFeaturePage(const Feature& f)
 {
     if (f.description) {
@@ -32,7 +90,9 @@ void DrawFeaturePage(const Feature& f)
 
 void DrawMenu(bool* open)
 {
-    ImGui::SetNextWindowSize(ImVec2(420, 0), ImGuiCond_FirstUseEver);
+    const float sidebarW = SidebarWidth();
+    ImGui::SetNextWindowSize(ImVec2(sidebarW + 420.0f, 460.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(sidebarW + kPageMinWidth, kMinHeight), ImVec2(FLT_MAX, FLT_MAX));
     // "###<name>" keeps the window ID stable while the title text changes.
     const bool dirty = ConfigDirty();
     char title[96];
@@ -43,7 +103,7 @@ void DrawMenu(bool* open)
     ImGui::AlignTextToFramePadding();
     ImGui::Text("%.0f FPS (%.2f ms)", io.Framerate, 1000.0f / io.Framerate);
 
-    // Save / Reload, right-aligned on the FPS row above the tabs.
+    // Save / Reload, right-aligned on the FPS row above the pages.
     {
         const ImGuiStyle& st = ImGui::GetStyle();
         const float saveW = ImGui::CalcTextSize("Save").x + st.FramePadding.x * 2.0f;
@@ -63,15 +123,12 @@ void DrawMenu(bool* open)
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Discard unsaved changes and re-read %s", AppFileName(".ini").c_str());
     }
 
-    if (ImGui::BeginTabBar("##features")) {
-        for (const Feature* f : feature::All()) {
-            if (!f->title || !f->drawMenu) continue;
-            if (ImGui::BeginTabItem(f->title)) {
-                DrawFeaturePage(*f);
-                ImGui::EndTabItem();
-            }
-        }
-        ImGui::EndTabBar();
+    if (const Feature* page = CurrentPage()) {
+        DrawSidebar(sidebarW);
+        ImGui::SameLine();
+        ImGui::BeginChild("##page", ImVec2(0, 0));
+        DrawFeaturePage(*page);
+        ImGui::EndChild();
     }
     // Ctrl+click lets a slider take any typed value; keep each setting inside its ini range
     // (e.g. an FPS cap of 0). Runs before the frame limiter in the same Present.
