@@ -89,13 +89,13 @@ bool StartOnScreen(uintptr_t spawn, bool self, const math::Vec3& estimate, float
         return true;
     }
     if (!camera::ProjectToScreen(estimate, x, y)) return false;
-    int l, t, r, b;
-    if (spawn && game::SpawnLabelRect(spawn, l, t, r, b)) {
-        const float cx = (l + r) * 0.5f;
-        const float slack = (r - l) > kLabelSlack ? (float)(r - l) : kLabelSlack;
+    game::Label lb;
+    if (spawn && game::SpawnLabel(spawn, lb)) {
+        const float cx = (lb.left + lb.right) * 0.5f;
+        const float slack = (lb.right - lb.left) > kLabelSlack ? (float)(lb.right - lb.left) : kLabelSlack;
         if (cx > x - slack && cx < x + slack) {
             x = cx;
-            y = (float)(t - kLabelGap);
+            y = (float)(lb.top - kLabelGap);
         }
     }
     return true;

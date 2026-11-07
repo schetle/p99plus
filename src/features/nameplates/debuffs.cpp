@@ -3,9 +3,11 @@
 // duration count (game/spells.h). It goes again when the server says it wore off ("Your X spell has
 // worn off of Y."), when the NPC dies or leaves, on zoning, or a little after its estimated
 // duration has run out (in case the line didn't come).
-// Icons are drawn in a row just under the NPC's name label, right after the engine draws the labels
-// and depth-tested like them (render/icons.h), so whatever hides the name hides the icons.
+// Icons are drawn in a row just under the NPC's name label (and its health status line), right
+// after the engine draws the labels and depth-tested like them (render/icons.h), so whatever hides
+// the name hides the icons.
 #include "features/nameplates/debuffs.h"
+#include "features/nameplates/health.h"
 #include "features/nameplates/nameplates.h"
 #include "core/host.h"
 #include "core/log.h"
@@ -176,7 +178,8 @@ void Expire()
     }
 }
 
-// Called right after the engine has drawn this frame's name labels (game::labels::AfterLabels).
+} // namespace
+
 void Draw()
 {
     if (!cfg.enabled) return;
@@ -195,14 +198,14 @@ void Draw()
             for (int k = a; k > 0 && s.entries[row[k]].start < s.entries[row[k - 1]].start; --k)
                 std::swap(row[k], row[k - 1]);
 
-        int l, t, r, b;
-        float depth;
-        if (!game::SpawnLabelRect(game::SpawnById(first.target), l, t, r, b, &depth)) continue;   // no name shown
-        depth = game::labels::Nearer(depth, kDepthBias);
+        game::Label lb;
+        const uintptr_t spawn = game::SpawnById(first.target);
+        if (!game::SpawnLabel(spawn, lb)) continue;   // no name shown
+        const float depth = game::labels::Nearer(lb.depth, kDepthBias);
         const int size = cfg.icon_size;
         const int width = n * size + (n - 1) * kIconSpace;
-        int x = (l + r) / 2 - width / 2;
-        const int y = b + kIconGap;
+        int x = (lb.left + lb.right) / 2 - width / 2;
+        const int y = lb.bottom + kIconGap + health::SpaceBelow(spawn);   // under the health status, if shown
         for (int k = 0; k < n; ++k, x += size + kIconSpace) {
             const Entry& e = s.entries[row[k]];
             icons[count++] = { e.icon, (float)x, (float)y, (float)size, depth, 0xffffffffu };
@@ -210,8 +213,6 @@ void Draw()
     }
     render::icons::Draw(icons, count);
 }
-
-} // namespace
 
 void OnFrame()
 {
@@ -231,7 +232,6 @@ void OnFrame()
         s_actionsOk = game::actions::Init();
         game::actions::Listen(OnAction);
         game::chat::Listen(OnChat);
-        game::labels::AfterLabels(Draw);
         game::spells::Ready();   // read the spell file now rather than on the first cast
         s_iconsOk = render::icons::Load(game::wnd::SkinFolder());
     }

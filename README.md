@@ -120,6 +120,10 @@ The name labels the game shows over spawns.
 - `Change nameplates` (on by default): turns it all on or off.
 - `Hide your name`: your own name isn't shown over your character.
 - `Your name`, `NPC names`, `Other players`: the size of those names, in percent of the game's size (50–250). Pets count as NPCs; corpses keep the game's size. Names still shrink with distance as they normally do, and very large ones stop growing at about a seventh of the screen.
+- `Target health status`: a line under your target's name that says how hurt it is: **Uninjured** (green, 99 % health and up), **Barely Injured** (yellow-green, 67–98 %), **Injured** (yellow, 34–66 %) or **Badly Injured** (red, 1–33 %). It is shown for NPCs that aren't pets, and goes when they die. Only your target gets it: the server only tells you an NPC's health while you have it targeted. It grows, shrinks and fades out with the name and, like the name, is hidden by anything in front of it.
+- `Your health status`: the same line under your own name, whether or not you have yourself targeted. With `Hide your name` on, it takes your name's place.
+  - `Hide when Uninjured`: your line only shows once you're below 99 % health (Barely Injured or worse).
+- `Health text size`: the health status text's size, in percent of the name's (30–100).
 
 **Debuff icons.** Small spell icons in a row under an NPC's name, one per debuff on it, like the icons in your buff window. They only show while the NPC's name does, and like the name they are hidden by anything in front of it: walls, scenery, your own character.
 

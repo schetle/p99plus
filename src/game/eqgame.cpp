@@ -3,6 +3,7 @@
 #include "game/labels.h"
 #include "util/mem.h"
 #include <windows.h>
+#include <algorithm>
 
 namespace game {
 
@@ -10,6 +11,7 @@ namespace {
 bool s_ok = false;
 bool s_checked = false;
 bool s_eyeOk = false;     // kEyeHeight is the expected code
+bool s_hpOk = false;      // kCurHp and kMaxHp are
 } // namespace
 
 void Check()
@@ -27,6 +29,9 @@ void Check()
     s_ok = true;
     s_eyeOk = mem::Matches((void*)kEyeHeight, kEyeHeightPrologue, sizeof(kEyeHeightPrologue));
     if (!s_eyeOk) Log("game: unexpected code at %p (eye height); using a fixed height", (void*)kEyeHeight);
+    s_hpOk = mem::Matches((void*)kCurHp, kCurHpPrologue, sizeof(kCurHpPrologue)) &&
+             mem::Matches((void*)kMaxHp, kMaxHpPrologue, sizeof(kMaxHpPrologue));
+    if (!s_hpOk) Log("game: unexpected code at %p/%p (HP); your own HP percent unavailable", (void*)kCurHp, (void*)kMaxHp);
 }
 
 bool Available() { return s_ok; }
@@ -85,6 +90,11 @@ bool IsPetOf(uintptr_t s, int ownerId)
            mem::Read<int>(s + spawn::kMasterId) == ownerId;
 }
 
+bool IsPet(uintptr_t s)
+{
+    return s && mem::Read<unsigned char>(s + spawn::kHasMaster) != 0 && mem::Read<int>(s + spawn::kMasterId) > 0;
+}
+
 bool IsPlayer(uintptr_t s) { return s && mem::Read<unsigned char>(s + spawn::kType) == 0; }
 
 bool IsPlayersPet(uintptr_t s)
@@ -94,6 +104,28 @@ bool IsPlayersPet(uintptr_t s)
 }
 
 int SpawnHp(uintptr_t s) { return s ? mem::Read<int>(s + spawn::kHp) : 0; }
+
+int OwnHpPercent()
+{
+    if (!s_hpOk || !InWorld()) return -1;
+    const uintptr_t me = LocalPlayer();
+    const uintptr_t data = mem::Read<uintptr_t>(addr::kCharData);
+    if (!me || data <= 0x10000) return -1;
+    using Hp_t = int (__thiscall*)(void* charInfo, int spawnType);
+    void* info = (void*)(data + addr::kCharInfo);
+    const int type = SpawnType(me);
+    const int max = ((Hp_t)addr::kMaxHp)(info, type);
+    if (max <= 0) return -1;
+    const int cur = ((Hp_t)addr::kCurHp)(info, type);
+    return std::clamp((int)((long long)cur * 100 / max), 0, 100);
+}
+
+uintptr_t Target()
+{
+    if (!s_ok) return 0;
+    const uintptr_t p = mem::Read<uintptr_t>(addr::kTarget);
+    return p > 0x10000 ? p : 0;
+}
 
 int SpawnType(uintptr_t s) { return s ? mem::Read<unsigned char>(s + spawn::kType) : -1; }
 
@@ -118,19 +150,23 @@ uintptr_t SpawnActor(uintptr_t s)
     return eng > 0x10000 ? eng : 0;
 }
 
-bool SpawnLabelRect(uintptr_t s, int& left, int& top, int& right, int& bottom, float* depth)
+bool SpawnLabel(uintptr_t s, Label& out)
 {
     if (!s_ok || !s) return false;
     const uintptr_t holder = mem::Read<uintptr_t>(s + spawn::kActor);
     const uintptr_t eng = holder > 0x10000 ? mem::Read<uintptr_t>(holder) : 0;
     const uintptr_t tag = eng > 0x10000 ? mem::Read<uintptr_t>(eng + actor::kNameTag) : 0;
-    if (tag <= 0x10000 || !labels::DrawnRecently(tag)) return false;
-    left = mem::Read<int>(tag + actor::kTagRect);
-    top = mem::Read<int>(tag + actor::kTagRect + 4);
-    right = mem::Read<int>(tag + actor::kTagRect + 8);
-    bottom = mem::Read<int>(tag + actor::kTagRect + 12);
-    if (depth) *depth = mem::Read<float>(tag + actor::kTagDepth);
-    return right > left && bottom > top;
+    if (tag <= 0x10000) return false;
+    out.alpha = (mem::Read<uint32_t>(tag + actor::kTagColor) >> 24) / 255.0f;   // unless the hooks know better
+    if (!labels::DrawnRecently(tag, &out.alpha)) return false;
+    out.left = mem::Read<int>(tag + actor::kTagRect);
+    out.top = mem::Read<int>(tag + actor::kTagRect + 4);
+    out.right = mem::Read<int>(tag + actor::kTagRect + 8);
+    out.bottom = mem::Read<int>(tag + actor::kTagRect + 12);
+    out.depth = mem::Read<float>(tag + actor::kTagDepth);
+    const int h = mem::Read<int>(tag + actor::kTagTextHeight);
+    out.lines = std::clamp((h + actor::kTagLineHeight / 2) / actor::kTagLineHeight, 1, 8);
+    return out.right > out.left && out.bottom > out.top;
 }
 
 bool SpawnEyePos(uintptr_t s, math::Vec3& pos, float* eyeHeight)

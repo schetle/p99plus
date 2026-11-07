@@ -1,7 +1,9 @@
 // Nameplates. The engine draws each name label itself (game/labels.h): we pick its size per kind
-// of spawn, or skip it for your own. The debuff icons are in debuffs.cpp.
+// of spawn, or skip it for your own. The health status line is in health.cpp, the debuff icons
+// in debuffs.cpp.
 #include "features/nameplates/nameplates.h"
 #include "features/nameplates/debuffs.h"
+#include "features/nameplates/health.h"
 #include "game/eqgame.h"
 #include "game/labels.h"
 #include "overlay/widgets.h"
@@ -56,6 +58,13 @@ float LabelScale(uintptr_t actor)
     return (it->kind == Kind::Npc ? cfg.npc_size : cfg.player_size) / 100.0f;
 }
 
+// One callback, so the health line is always placed before the icons that go under it.
+void DrawAfterLabels()
+{
+    health::Draw();
+    debuffs::Draw();
+}
+
 void OnFrame()
 {
     if (!cfg.enabled) {
@@ -65,8 +74,10 @@ void OnFrame()
         // The hooks go in only once the feature is on (and stay until the core unloads).
         game::labels::Init();
         game::labels::SetPolicy(LabelScale);
+        game::labels::AfterLabels(DrawAfterLabels);   // registered once
         BuildActors();
     }
+    health::OnFrame();
     debuffs::OnFrame();
 }
 
@@ -76,6 +87,10 @@ const Setting kSettings[] = {
     IntSetting ("nameplates", "own_size", &cfg.own_size, 50, 250, "Size of your own name, in percent of the game's."),
     IntSetting ("nameplates", "npc_size", &cfg.npc_size, 50, 250, "Size of NPC names (pets included), in percent of the game's."),
     IntSetting ("nameplates", "player_size", &cfg.player_size, 50, 250, "Size of other players' names, in percent of the game's."),
+    BoolSetting("nameplates", "health_status", &cfg.health_status, "Show how hurt your target is (Uninjured .. Badly Injured) under its name (NPCs only)."),
+    BoolSetting("nameplates", "health_own", &cfg.health_own, "Show how hurt you are under your own name (also while your name is hidden)."),
+    BoolSetting("nameplates", "health_own_hide_uninjured", &cfg.health_own_hide_uninjured, "Don't show your own health status while you are Uninjured."),
+    IntSetting ("nameplates", "health_size", &cfg.health_size, 30, 100, "Size of the health status text, in percent of the name's."),
     BoolSetting("nameplates", "debuffs_mine", &cfg.debuffs_mine, "Show your debuffs on an NPC as icons under its name."),
     BoolSetting("nameplates", "debuffs_pet", &cfg.debuffs_pet, "Show your pet's debuffs on an NPC as icons under its name."),
     IntSetting ("nameplates", "icon_size", &cfg.icon_size, 10, 40, "Size of the debuff icons, in pixels."),
@@ -89,6 +104,16 @@ void DrawMenu()
     ImGui::EndDisabled();
     ui::SliderI("NPC names", &cfg.npc_size, 50, 250);
     ui::SliderI("Other players", &cfg.player_size, 50, 250);
+    ImGui::Checkbox("Target health status", &cfg.health_status);
+    ImGui::Checkbox("Your health status", &cfg.health_own);
+    ImGui::Indent();
+    ImGui::BeginDisabled(!cfg.health_own);
+    ImGui::Checkbox("Hide when Uninjured", &cfg.health_own_hide_uninjured);
+    ImGui::EndDisabled();
+    ImGui::Unindent();
+    ImGui::BeginDisabled(!cfg.health_status && !cfg.health_own);
+    ui::SliderI("Health text size", &cfg.health_size, 30, 100);
+    ImGui::EndDisabled();
 
     ImGui::SeparatorText("Debuff icons");
     ImGui::Checkbox("Mine", &cfg.debuffs_mine);
@@ -97,6 +122,7 @@ void DrawMenu()
 
     if (cfg.enabled && game::Available()) {   // the hooks are only tried while it is on
         if (!game::labels::Ready()) ui::Hint("Label changes unavailable: the label hook failed.");
+        if (const char* p = health::Problem()) ui::Hint("%s", p);
         if (const char* p = debuffs::Problem()) ui::Hint("%s", p);
     }
 }
@@ -105,7 +131,7 @@ void DrawMenu()
 
 const Feature feature = {
     "Nameplates",
-    "The name labels over spawns, and your debuffs under NPC names.",
+    "The name labels over spawns, how hurt you and your target are, and your debuffs under NPC names.",
     "Change nameplates", &cfg.enabled,
     kSettings, std::size(kSettings), OnFrame, DrawMenu, debuffs::Shutdown,
 };

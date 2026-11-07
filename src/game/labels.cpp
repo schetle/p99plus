@@ -27,9 +27,11 @@ float    s_default = 0.0f;        // its value as the engine has it
 bool     s_tried = false;
 bool     s_ok = false;
 bool     s_tracked = false;       // kLabelSetRect is hooked: we know which labels were drawn
+bool     s_invisible = false;     // the label being drawn is hidden: placed, but with its text transparent
 unsigned s_frame = 1;
 unsigned s_polls = 0;
-std::unordered_map<uintptr_t, unsigned> s_drawn;   // label -> the frame it was last drawn in
+struct Drawn { unsigned frame; float alpha; };   // when it was last drawn, and the engine's alpha for it
+std::unordered_map<uintptr_t, Drawn> s_drawn;    // label -> Drawn (without the rect hook: the labels hidden lately)
 bool     s_queued = false;        // labels were queued since the last flush
 bool     s_flushHooked = false;
 std::vector<AfterFn> s_after;
@@ -41,7 +43,18 @@ int __fastcall Hk_LabelDraw(void* label, void* edx, void* actor)
 {
     hook::Busy busy;
     const float k = s_policy ? s_policy((uintptr_t)actor) : 1.0f;
-    if (k <= 0.0f) return 0;                         // hidden (the caller ignores the result)
+    if (k <= 0.0f) {
+        // Hidden. With the rect hook in, the engine still places it (so what goes with the label
+        // knows where it would be) and its text goes out fully transparent; without it, it's skipped.
+        if (!s_tracked) {                            // the caller ignores the result
+            s_drawn[(uintptr_t)label] = { s_frame, 0.0f };   // its rect is stale from here on
+            return 0;
+        }
+        s_invisible = true;
+        const int r = oLabelDraw(label, edx, actor);
+        s_invisible = false;
+        return r;
+    }
     if (k == 1.0f || !s_scale) return oLabelDraw(label, edx, actor);
     *s_scale = s_default * k;                        // only this function reads it
     const int r = oLabelDraw(label, edx, actor);
@@ -53,9 +66,9 @@ int __fastcall Hk_LabelDraw(void* label, void* edx, void* actor)
 int __fastcall Hk_SetRect(void* sprite, void* edx, int font, const int* rect, uint32_t argb, float f)
 {
     hook::Busy busy;
-    s_drawn[(uintptr_t)sprite - gfx::kLabelSprite] = s_frame;
+    s_drawn[(uintptr_t)sprite - gfx::kLabelSprite] = { s_frame, (argb >> 24) / 255.0f };
     s_queued = true;
-    return oSetRect(sprite, edx, font, rect, argb, f);
+    return oSetRect(sprite, edx, font, rect, s_invisible ? argb & 0x00ffffffu : argb, f);
 }
 
 // The flush that drew labels is followed by what wants to be drawn with them.
@@ -124,7 +137,7 @@ void Tick()
     ++s_frame;
     if (s_frame % kPruneEvery == 0)
         for (auto it = s_drawn.begin(); it != s_drawn.end();)
-            it = (s_frame - it->second > kPruneEvery) ? s_drawn.erase(it) : std::next(it);
+            it = (s_frame - it->second.frame > kPruneEvery) ? s_drawn.erase(it) : std::next(it);
 }
 
 void SetPolicy(Policy fn) { s_policy = fn; }
@@ -149,11 +162,13 @@ float Nearer(float depth, float units)
     return q - q * zn / w;
 }
 
-bool DrawnRecently(uintptr_t label)
+bool DrawnRecently(uintptr_t label, float* alpha)
 {
-    if (!s_tracked) return true;
     auto it = s_drawn.find(label);
-    return it != s_drawn.end() && s_frame - it->second <= 1;
+    if (!s_tracked) return it == s_drawn.end() || s_frame - it->second.frame > 1;   // unknown unless hidden
+    if (it == s_drawn.end() || s_frame - it->second.frame > 1) return false;
+    if (alpha) *alpha = it->second.alpha;
+    return true;
 }
 
 } // namespace game::labels

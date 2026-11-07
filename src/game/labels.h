@@ -6,7 +6,8 @@
 
 namespace game::labels {
 
-// The size to draw the label of this engine actor at: 1 = the game's size, 0 = don't draw it.
+// The size to draw the label of this engine actor at: 1 = the game's size, 0 = don't show it
+// (it is still placed, with its text transparent, so DrawnRecently and its rect stay current).
 using Policy = float (*)(uintptr_t actor);
 
 void Init();                // installs the hooks once EQGraphicsDX9.dll is loaded (retried; call every frame)
@@ -14,8 +15,9 @@ bool Ready();               // the hooks are in
 void Tick();                // once per Present (core/feature.cpp)
 void SetPolicy(Policy fn);  // nullptr = every label at the game's size
 // The engine drew this label (the object at [actor + 0x1a0]) this frame or the one before, so its
-// rect is current. True when that can't be told (the hooks aren't in).
-bool DrawnRecently(uintptr_t label);
+// rect is current; *alpha gets the engine's alpha for it (0..1, its distance fade; also for a
+// label shown transparent). True, with *alpha untouched, when that can't be told (the hooks aren't in).
+bool DrawnRecently(uintptr_t label, float* alpha = nullptr);
 
 // Runs right after the engine has drawn this frame's labels, with the device set up as it was for
 // them (the world's depth buffer bound): what is drawn here can be depth-tested like the labels.

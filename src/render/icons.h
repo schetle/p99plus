@@ -1,8 +1,8 @@
 #pragma once
-// Spell icons drawn straight through Direct3D, depth-tested, so they hide behind the scene the way
-// the engine's name labels do (the game's own UI blits can't be: the UI has no depth). The images
-// are the skin's spells01..07.tga: 256x256 sheets of 6 x 6 icons of 40 px, the cells a spell's
-// new_icon numbers (what the game's A_SpellIcons animation shows).
+// Spell icons drawn straight through Direct3D, depth-tested (render/screen_quads.h), so they hide
+// behind the scene the way the engine's name labels do (the game's own UI blits can't be: the UI
+// has no depth). The images are the skin's spells01..07.tga: 256x256 sheets of 6 x 6 icons of
+// 40 px, the cells a spell's new_icon numbers (what the game's A_SpellIcons animation shows).
 #include <cstdint>
 #include <string>
 
@@ -23,7 +23,6 @@ bool Load(const std::string& skinDir);
 // (game/labels.h AfterLabels); the device state is put back afterwards.
 void Draw(const Icon* icons, int count);
 
-void ReleaseDeviceState();   // before a device reset (the textures are managed and survive it)
-void Release();              // at unload
+void Release();              // at unload (the textures are managed and survive a device reset)
 
 } // namespace render::icons

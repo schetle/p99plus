@@ -6,6 +6,8 @@
 #include "features/limiter/limiter.h"
 #include "overlay/overlay.h"
 #include "render/icons.h"
+#include "render/screen_quads.h"
+#include "render/status_text.h"
 
 namespace render {
 
@@ -30,9 +32,9 @@ void OnPresent(IDirect3DDevice9* dev)
     limiter::Wait();
 }
 
-void PreReset()  { overlay::PreReset(); icons::ReleaseDeviceState(); }
+void PreReset()  { overlay::PreReset(); quads::ReleaseDeviceState(); }
 void PostReset() { overlay::PostReset(); }
-void Shutdown()  { icons::Release(); }
+void Shutdown()  { icons::Release(); status_text::Release(); quads::Release(); }
 
 const D3DMATRIX* OnSetTransform(D3DTRANSFORMSTATETYPE state, const D3DMATRIX* m)
 {
