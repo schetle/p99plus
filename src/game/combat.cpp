@@ -34,7 +34,9 @@ int __fastcall Hk_HitReport(void* self, void* /*edx*/, const unsigned char* hit,
 {
     hook::Busy busy;
     if (hit) {
-        const Hit h = Decode(hit, show != 0);
+        // `show` is a bool: the callers set only its low byte and push the whole stack slot, so
+        // the upper bytes are leftovers (usually nonzero).
+        const Hit h = Decode(hit, (show & 0xff) != 0);
         for (Listener fn : s_listeners) fn(h);
     }
     return oHitReport(self, hit, show, extra);
