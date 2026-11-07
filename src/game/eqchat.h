@@ -21,5 +21,8 @@ bool Is(const char* text, const Template& t);
 // Does `text` fit that entry ("Your Location is %1, %2, %3")? `arg` is whatever the text has from
 // the first to the last %N of the entry.
 bool Match(const char* text, const Template& t, std::string& arg);
+// Like Match, but each %N on its own: args[N-1] gets the text in place of %N ("Your %1 spell has
+// worn off of %2." gives the spell and the target). %N past `count` are matched but not kept.
+bool MatchArgs(const char* text, const Template& t, std::string* args, int count);
 
 } // namespace game::chat

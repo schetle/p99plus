@@ -1,9 +1,11 @@
 // Getting the custom screens into the skin: the UI loader hook writes their XML next to the skin's
 // files and has the game load a copy of EQUI.xml that includes them.
 #include "core/app.h"
+#include "core/host.h"
 #include "core/log.h"
 #include "game/eqgame.h"
 #include "game/ui/detail.h"
+#include "game/ui/driver.h"
 #include "game/ui/xstr.h"
 #include "util/hook.h"
 #include "util/mem.h"
@@ -23,6 +25,9 @@ using Loader_t = int (__thiscall*)(void* self, const void* dir, const void* seco
 Loader_t oLoader = nullptr;
 
 const std::string kMergedFile = std::string("EQUI_") + kAppName + ".xml";
+
+struct SkinStash { char path[260]; };
+constexpr const char* kSkinKey = "wnd.skin";
 
 std::string FileName(const CustomWindowDef& d) { return "EQUI_" + d.screen + ".xml"; }
 
@@ -129,6 +134,14 @@ int __fastcall Hk_Loader(void* self, void* /*edx*/, const void* dir, const void*
 {
     hook::Busy busy;
     const std::string name = XStrToString((uintptr_t)file);
+    if (_stricmp(name.c_str(), "EQUI.xml") == 0) {
+        std::string skin;
+        SkinStash st = {};
+        if (SkinPath(XStrToString((uintptr_t)dir), skin) && skin.size() < sizeof(st.path)) {
+            memcpy(st.path, skin.c_str(), skin.size());
+            stash::PutValue(kSkinKey, st);
+        }
+    }
     if (Registry().empty() || g_inject.failed || _stricmp(name.c_str(), "EQUI.xml") != 0)
         return oLoader(self, dir, second, file);
 
@@ -171,3 +184,15 @@ void CheckStale()
 }
 
 } // namespace game::wnd::detail
+
+namespace game::wnd {
+
+std::string SkinFolder()
+{
+    detail::SkinStash st = {};
+    if (!stash::GetValue(detail::kSkinKey, st)) return {};
+    st.path[sizeof(st.path) - 1] = 0;
+    return st.path;
+}
+
+} // namespace game::wnd

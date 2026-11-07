@@ -75,6 +75,9 @@ inline constexpr uintptr_t kHitReport     = 0x4a56e3;
 inline constexpr uintptr_t kLocalPlayer   = 0x905ce4;  // the player's own spawn (the one "YOU" lines compare with)
 inline constexpr uintptr_t kSpawnTable    = 0x900f50;  // spawn* per spawn id, 0 < id < kMaxSpawnId (what 0x401b28 reads)
 inline constexpr int       kMaxSpawnId    = 3000;
+// Spell actions: the OP_Action packet (and the client's own hit animations) go to kSpellAction
+// (__thiscall(target spawn, const action*), ret 4); see game/actions.h for the layout.
+inline constexpr uintptr_t kSpellAction   = 0x47f614;
 inline constexpr uintptr_t kEyeHeight     = 0x489bf5;  // float __thiscall(spawn): eye height above spawn::kCamZ
 // Text in the game's own fonts. The fonts are listed in the window manager (wnd::kMgrFonts);
 // each is a CTextureFont.
@@ -100,7 +103,8 @@ inline constexpr int kCamZ = 0x38;                             // the z the came
 inline constexpr int kHeading = 0x4c, kTurnSpeed = 0x58, kPitch = 0x5c;
 inline constexpr int kZoneId = 0x204;                          // the zone the character is in
 inline constexpr int kName = 0x120;                            // char[0x40]
-inline constexpr int kType = 0x244;                            // byte: 0 player, 1 NPC, 3 corpse
+inline constexpr int kType = 0x244;                            // byte: 0 player, 1 NPC, 2 player corpse, 3 NPC corpse
+inline constexpr int kLevel = 0x24c;                           // byte (the label's "%s [%d %s]" reads it)
 inline constexpr int kHasMaster = 0x1b3;                       // byte: set on pets (tested before kMasterId)
 inline constexpr int kId = 0x258;                              // spawn id
 inline constexpr int kMasterId = 0x25c;                        // the owner's spawn id (pets)
@@ -113,6 +117,8 @@ namespace actor {
 inline constexpr int kNameTag = 0x1a0;      // the name label object (set through the actor's vtable +0x140), or 0
 inline constexpr int kTagRect = 0x10;       // in the label: left, top, right, bottom in screen pixels, written
                                             // when the engine draws the label (stale while it isn't drawn)
+inline constexpr int kTagDepth = 0x3c;      // in the label: the post-projection z its text is drawn and
+                                            // depth-tested at (the rect setter's last argument, sprite +0x38)
 } // namespace actor
 
 // Fields of a UI window (CXWnd / CSidlScreenWnd) and its vtable.
@@ -187,6 +193,9 @@ inline constexpr unsigned char kFontHeightPrologue[] = { 0x8b, 0x41, 0x04, 0x50 
 // mov ecx,[0x985c88]
 inline constexpr unsigned char kHudPointBytes[] = { 0x8b, 0x0d, 0x88, 0x5c, 0x98, 0x00 };
 
+// push ebx; push ebp; push esi; push edi; mov edi,ecx; xor ebx,ebx
+inline constexpr unsigned char kSpellActionPrologue[] = { 0x53, 0x55, 0x56, 0x57, 0x8b, 0xf9, 0x33, 0xdb };
+
 // mov eax, <seh handler>   (then call __SEH_prolog)
 inline constexpr unsigned char kChatPrintPrologue[] = { 0xb8, 0x0a, 0x70, 0x62, 0x00 };
 
@@ -218,12 +227,20 @@ bool      IsPetOf(uintptr_t spawnBase, int ownerId);
 bool      IsPlayer(uintptr_t spawnBase);             // a player character (not an NPC or corpse)
 bool      IsPlayersPet(uintptr_t spawnBase);         // a pet whose owner is a player character
 int       SpawnHp(uintptr_t spawnBase);          // current HP (exact only for the player's own spawn)
+int       SpawnType(uintptr_t spawnBase);        // spawn::kType, -1 for a bad spawn
+int       SpawnLevel(uintptr_t spawnBase);       // 0 for a bad spawn
+std::string SpawnName(uintptr_t spawnBase);      // as the client keeps it ("a_gnoll01"); empty for a bad spawn
+// The engine actor behind the spawn ([[spawn + kActor]], what the label hooks are given), or 0.
+uintptr_t SpawnActor(uintptr_t spawnBase);
 // Where the spawn's eyes are, in world coordinates (camera z + the game's eye height, which also
 // goes to *eyeHeight). False while the spawn has no model yet (zoning, just arrived).
 bool      SpawnEyePos(uintptr_t spawnBase, math::Vec3& pos, float* eyeHeight = nullptr);
 
-// The screen rectangle the engine last drew the spawn's name label in. False when it has none.
-bool      SpawnLabelRect(uintptr_t spawnBase, int& left, int& top, int& right, int& bottom);
+// The screen rectangle of the spawn's name label. False when it has none, or (once game/labels.h
+// is installed) when the engine didn't draw it in the last frame or two, so the rect is current.
+// *depth gets the z the engine depth-tests the label's text at (0 near .. 1 far).
+bool      SpawnLabelRect(uintptr_t spawnBase, int& left, int& top, int& right, int& bottom,
+                         float* depth = nullptr);
 
 // The long name of the zone the character is in ("Butcherblock Mountains"). False when there is
 // no character or the zone is unknown.

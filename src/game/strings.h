@@ -11,6 +11,7 @@ namespace str {
 inline constexpr int kSenseHeading = 12435;   // "You think you are heading %1."
 inline constexpr int kSenseFail    = 12426;   // "You have no idea what direction you are facing."
 inline constexpr int kLocation     = 13177;   // "Your Location is %1, %2, %3" (/loc)
+inline constexpr int kSpellWornOff = 436;     // "Your %1 spell has worn off of %2." (to the caster or the pet's owner)
 } // namespace str
 
 } // namespace game

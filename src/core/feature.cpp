@@ -3,10 +3,12 @@
 #include "features/combattext/combat_text.h"
 #include "features/limiter/limiter.h"
 #include "features/mouse/mouse.h"
+#include "features/nameplates/nameplates.h"
 #include "features/zoneinfo/zone_info.h"
 #include "game/eqchat.h"
 #include "game/eqgame.h"
 #include "game/hud.h"
+#include "game/labels.h"
 #include "game/ui/driver.h"
 #include "overlay/overlay.h"
 
@@ -20,6 +22,7 @@ const std::vector<const Feature*>& All()
         &camera::feature,
         &zoneinfo::feature,
         &combattext::feature,
+        &nameplates::feature,
         &limiter::feature,
         &overlay::feature,
     };
@@ -31,6 +34,7 @@ void OnFrame()
     game::Check();   // features may rely on knowing whether eqgame.exe is the expected build
     game::chat::Init();
     game::hud::Tick();   // marks a Present: game::hud draws once per rendered frame
+    game::labels::Tick();   // frames for "which labels were drawn lately"
     game::wnd::Init();
     for (const Feature* f : All())
         if (f->onFrame) f->onFrame();

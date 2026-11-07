@@ -21,13 +21,12 @@ bool s_ok = false;
 // spell id u16 +5, damage i32 +7.
 Hit Decode(const unsigned char* p, bool printed)
 {
-    unsigned short target, source, spell;
+    unsigned short target, source;
     int damage;
     memcpy(&target, p + 0, 2);
     memcpy(&source, p + 2, 2);
-    memcpy(&spell, p + 5, 2);
     memcpy(&damage, p + 7, 4);
-    return { target, source, p[4], spell, damage, printed };
+    return { target, source, p[4], damage, printed };
 }
 
 int __fastcall Hk_HitReport(void* self, void* /*edx*/, const unsigned char* hit, int show, int extra)

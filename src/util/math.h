@@ -25,7 +25,8 @@ inline float WrapPi(float a)
 inline float WrapEq(float a)
 {
     a = std::fmod(a, kEqCircle);
-    return a < 0 ? a + kEqCircle : a;
+    if (a < 0) a += kEqCircle;
+    return a < kEqCircle ? a : 0.0f;   // a hair below 0 plus 512 rounds to 512 itself
 }
 
 // Difference of two EQ angles, into [-256, 256].

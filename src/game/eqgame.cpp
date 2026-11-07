@@ -1,5 +1,6 @@
 #include "game/eqgame.h"
 #include "core/log.h"
+#include "game/labels.h"
 #include "util/mem.h"
 #include <windows.h>
 
@@ -94,17 +95,41 @@ bool IsPlayersPet(uintptr_t s)
 
 int SpawnHp(uintptr_t s) { return s ? mem::Read<int>(s + spawn::kHp) : 0; }
 
-bool SpawnLabelRect(uintptr_t s, int& left, int& top, int& right, int& bottom)
+int SpawnType(uintptr_t s) { return s ? mem::Read<unsigned char>(s + spawn::kType) : -1; }
+
+int SpawnLevel(uintptr_t s) { return s ? mem::Read<unsigned char>(s + spawn::kLevel) : 0; }
+
+std::string SpawnName(uintptr_t s)
+{
+    if (!s) return {};
+    char buf[0x40];
+    size_t n = 0;
+    for (; n < sizeof(buf) - 1; ++n) {
+        buf[n] = mem::Read<char>(s + spawn::kName + n);
+        if (!buf[n]) break;
+    }
+    return std::string(buf, n);
+}
+
+uintptr_t SpawnActor(uintptr_t s)
+{
+    const uintptr_t holder = s ? mem::Read<uintptr_t>(s + spawn::kActor) : 0;
+    const uintptr_t eng = holder > 0x10000 ? mem::Read<uintptr_t>(holder) : 0;
+    return eng > 0x10000 ? eng : 0;
+}
+
+bool SpawnLabelRect(uintptr_t s, int& left, int& top, int& right, int& bottom, float* depth)
 {
     if (!s_ok || !s) return false;
     const uintptr_t holder = mem::Read<uintptr_t>(s + spawn::kActor);
     const uintptr_t eng = holder > 0x10000 ? mem::Read<uintptr_t>(holder) : 0;
     const uintptr_t tag = eng > 0x10000 ? mem::Read<uintptr_t>(eng + actor::kNameTag) : 0;
-    if (tag <= 0x10000) return false;
+    if (tag <= 0x10000 || !labels::DrawnRecently(tag)) return false;
     left = mem::Read<int>(tag + actor::kTagRect);
     top = mem::Read<int>(tag + actor::kTagRect + 4);
     right = mem::Read<int>(tag + actor::kTagRect + 8);
     bottom = mem::Read<int>(tag + actor::kTagRect + 12);
+    if (depth) *depth = mem::Read<float>(tag + actor::kTagDepth);
     return right > left && bottom > top;
 }
 

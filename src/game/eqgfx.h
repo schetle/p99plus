@@ -23,6 +23,34 @@ inline float& Aspect(void* cam)  { return *(float*)((char*)cam + 0x08); }   // f
 inline float* Angles(void* cam)  { return (float*)((char*)cam + 0xB0); }    // heading, pitch, roll
 inline float* Eye(void* cam)     { return (float*)((char*)cam + 0xBC); }    // x, y, z
 
+// Name labels. Each frame an actor's render calls kLabelDraw (thiscall, this = the label object
+// at [actor + 0x1a0], arg = the actor, ret 4). It skips labels more than 150 units away, sizes
+// the on-screen box from the distance times kLabelScale (a float only kLabelDraw reads), clamps it
+// to about a seventh of the screen and hands it to kLabelSetRect (thiscall on the label's text
+// sprite at label + 4: font id (always 10, a 40 px Arial texture), const int rect[4], ARGB,
+// float; ret 0x10), the one caller of that function, which stores the rect at sprite + 0xc.
+inline constexpr uintptr_t kLabelDraw    = 0x1004eb40;
+inline constexpr uintptr_t kLabelSetRect = 0x100035e0;
+inline constexpr uintptr_t kLabelScale   = 0x101caec4;
+inline constexpr float     kLabelScaleDefault = 0.0081249997f;
+inline constexpr int       kLabelSprite  = 0x4;        // the text sprite inside the label object
+// sub esp,0x40; mov eax,[abs]   (the address after a1 is relocated, so only this much is checked)
+inline constexpr unsigned char kLabelDrawPrologue[] = { 0x83, 0xEC, 0x40, 0xA1 };
+// mov eax,[ecx+8]; mov edx,[esp+8]; push esi; mov esi,[esp+8]
+inline constexpr unsigned char kLabelSetRectPrologue[] = { 0x8B, 0x41, 0x08, 0x8B, 0x54, 0x24, 0x08, 0x56, 0x8B, 0x74, 0x24, 0x08 };
+
+// The engine's 2D queue (text sprites such as the labels, set up through kLabelSetRect) is drawn by
+// kQueueFlush (thiscall on the queue, no arguments), called a couple of times per frame. It turns
+// fog, lighting and z-writes off and alpha blending on, but leaves the z-test as the world render
+// left it: that is why labels hide behind walls. Their depth is the post-projection z
+// Q - Q * zn / w, from the camera [[kCameraHolder] + kCamera]: zn at +0xc, Q (= zf / (zf - zn)) at +0x10.
+inline constexpr uintptr_t kQueueFlush   = 0x10001120;
+inline constexpr uintptr_t kCameraHolder = 0x102326e8;
+inline constexpr int       kCamera       = 0x30;
+inline constexpr int       kCameraNear   = 0xc;
+inline constexpr int       kCameraDepthQ = 0x10;
+inline constexpr unsigned char kQueueFlushPrologue[] = { 0x83, 0xEC, 0x1C, 0x56, 0x8B, 0xF1, 0x8B, 0x46, 0x08, 0x57, 0x33, 0xFF };
+
 // Which way the camera angles turn the view, fixed for this build: +heading turns the forward
 // vector counter-clockwise about +Z, +pitch raises it (measured from the view matrix).
 inline constexpr int kHeadingSign = 1;

@@ -73,4 +73,40 @@ bool Match(const char* text, const Template& t, std::string& arg)
     return true;
 }
 
+bool MatchArgs(const char* text, const Template& t, std::string* args, int count)
+{
+    const char* p = Pattern(t, true);
+    const char* s = text;
+    auto isArg = [](const char* c) { return c[0] == '%' && c[1] >= '1' && c[1] <= '9'; };
+    while (*p) {
+        if (!isArg(p)) {
+            if (*s != *p) return false;
+            ++s, ++p;
+            continue;
+        }
+        const int index = p[1] - '1';
+        p += 2;
+        // The literal text after the argument ends it.
+        const char* lit = p;
+        while (*p && !isArg(p)) ++p;
+        const size_t litLen = (size_t)(p - lit);
+        const char* argEnd;
+        if (litLen == 0) {
+            if (*p) return false;                    // two arguments in a row: can't tell them apart
+            argEnd = s + strlen(s);
+        } else if (!*p) {
+            const size_t n = strlen(s);              // the entry's last text: must end the line
+            if (n < litLen || strncmp(s + n - litLen, lit, litLen) != 0) return false;
+            argEnd = s + n - litLen;
+        } else {
+            argEnd = strstr(s, std::string(lit, litLen).c_str());
+            if (!argEnd) return false;
+        }
+        if (argEnd == s) return false;               // an argument is never empty
+        if (index < count) args[index].assign(s, argEnd);
+        s = argEnd + litLen;
+    }
+    return *s == '\0';
+}
+
 } // namespace game::chat

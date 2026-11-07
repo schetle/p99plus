@@ -27,6 +27,7 @@ void Shutdown()
 {
     Log("core: shutting down");
     feature::Shutdown();
+    render::Shutdown();
     ConfigStash();
     mem::RestoreCode();
     MH_Uninitialize();   // disables and removes every hook this DLL made

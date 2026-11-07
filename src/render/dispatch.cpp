@@ -5,43 +5,53 @@
 #include "features/camera/d3d_fallback.h"
 #include "features/limiter/limiter.h"
 #include "overlay/overlay.h"
+#include "render/icons.h"
 
 namespace render {
 
 namespace {
-bool s_overlay = false;   // true while our overlay renders: its own calls pass through untouched
+int s_own = 0;                       // OwnCalls scopes open: our own calls pass through untouched
+IDirect3DDevice9* s_dev = nullptr;
 } // namespace
+
+OwnCalls::OwnCalls() { ++s_own; }
+OwnCalls::~OwnCalls() { --s_own; }
+
+IDirect3DDevice9* Device() { return s_dev; }
 
 void OnPresent(IDirect3DDevice9* dev)
 {
+    s_dev = dev;
     feature::OnFrame();
-    s_overlay = true;
-    overlay::OnPresent(dev);
-    s_overlay = false;
+    {
+        OwnCalls own;
+        overlay::OnPresent(dev);
+    }
     limiter::Wait();
 }
 
-void PreReset()  { overlay::PreReset(); }
+void PreReset()  { overlay::PreReset(); icons::ReleaseDeviceState(); }
 void PostReset() { overlay::PostReset(); }
+void Shutdown()  { icons::Release(); }
 
 const D3DMATRIX* OnSetTransform(D3DTRANSFORMSTATETYPE state, const D3DMATRIX* m)
 {
-    return s_overlay ? m : camera::fallback::OnSetTransform(state, m);
+    return s_own ? m : camera::fallback::OnSetTransform(state, m);
 }
 
 const D3DMATRIX* ViewForBeginScene()
 {
-    return s_overlay ? nullptr : camera::fallback::ViewForBeginScene();
+    return s_own ? nullptr : camera::fallback::ViewForBeginScene();
 }
 
 void OnSetVertexShader(IDirect3DVertexShader9* vs)
 {
-    if (!s_overlay) camera::fallback::OnSetVertexShader(vs);
+    if (!s_own) camera::fallback::OnSetVertexShader(vs);
 }
 
 const float* OnSetVSConstants(UINT reg, const float* data, UINT count)
 {
-    return s_overlay ? data : camera::fallback::OnSetVertexShaderConstants(reg, data, count);
+    return s_own ? data : camera::fallback::OnSetVertexShaderConstants(reg, data, count);
 }
 
 } // namespace render

@@ -39,7 +39,7 @@ A "loaded" banner appears at the top of the screen for about 10 seconds after th
 
 Press **Insert** to open the menu. While it's open, the game gets no mouse or keyboard input. The key can be changed under *Overlay → Menu toggle key*. Ctrl+click any slider to type an exact value.
 
-The menu lists the features down the left side; click one to open its page, which starts with a short description. Features that are switched off are greyed in the list. Mouse and Limiter have an **Enable …** checkbox at the top, and Zone info and Combat text a **Show …** one; switching it off greys out the page and turns the feature off. Camera has a switch per section instead, and Overlay has none.
+The menu lists the features down the left side; click one to open its page, which starts with a short description. Features that are switched off are greyed in the list. Mouse and Limiter have an **Enable …** checkbox at the top, Zone info and Combat text a **Show …** one, and Nameplates a **Change nameplates** one; switching it off greys out the page and turns the feature off. Camera has a switch per section instead, and Overlay has none.
 
 ### Mouse
 
@@ -108,6 +108,22 @@ Numbers and words over the one a hit or heal happens to, in the game's own font,
 - `Font size`: one of the game's font sizes, as in `/chatfontsize`.
 
 The hits shown are the ones the game prints in your chat window. Heals on others aren't shown: the game only knows their health as a percentage.
+
+### Nameplates
+
+The name labels the game shows over spawns.
+
+- `Change nameplates` (on by default): turns it all on or off.
+- `Hide your name`: your own name isn't shown over your character.
+- `Your name`, `NPC names`, `Other players`: the size of those names, in percent of the game's size (50–250). Pets count as NPCs; corpses keep the game's size. Names still shrink with distance as they normally do, and very large ones stop growing at about a seventh of the screen.
+
+**Debuff icons.** Small spell icons in a row under an NPC's name, one per debuff on it, like the icons in your buff window. They only show while the NPC's name does, and like the name they are hidden by anything in front of it: walls, scenery, your own character.
+
+- `Mine`: your own debuffs (snares, slows, DoTs, roots, mezzes and so on). The icon goes when the game tells you the spell wore off, when the NPC dies or leaves, or when you zone.
+- `My pet's`: the same for your pet's debuffs.
+- `Icon size`: in pixels.
+
+Only spells that last a while get an icon; a nuke doesn't. Casting a spell again on the same NPC keeps one icon for it.
 
 ### Limiter
 
