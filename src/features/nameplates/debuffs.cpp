@@ -55,7 +55,7 @@ constexpr const char* kStashKey = "nameplates.debuffs";
 constexpr float    kGraceTicks = 3.0f;          // how long past the estimate an icon may stay
                                                 // when the "worn off" line didn't come (longer durations, missed lines)
 constexpr int      kIconGap    = 2;             // pixels between the label and the icons
-constexpr int      kIconSpace  = 1;             // pixels between icons
+constexpr int      kIconSpace  = 3;             // pixels between icons
 constexpr float    kDepthBias  = 3.0f;          // world units toward the camera: an NPC's own head
                                                 // mustn't hide the icons under its name
 
