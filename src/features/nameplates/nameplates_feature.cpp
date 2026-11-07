@@ -30,6 +30,10 @@ struct ActorKind {
 // the actor). Only built while a size differs from the game's.
 std::vector<ActorKind> s_actors;
 uintptr_t s_ownActor = 0;
+// The character is in a zone (game::InWorld), read once per frame. Outside it (character select
+// and creation, zoning) every label stays as the game draws it: there, LocalPlayer() is the
+// character on the select screen, whose name must not be hidden or resized.
+bool s_inWorld = false;
 
 bool SizesChanged() { return cfg.own_size != 100 || cfg.npc_size != 100 || cfg.player_size != 100; }
 
@@ -51,7 +55,7 @@ void BuildActors()
 
 float LabelScale(uintptr_t actor)
 {
-    if (!cfg.enabled) return 1.0f;
+    if (!cfg.enabled || !s_inWorld) return 1.0f;
     if (actor == s_ownActor) return cfg.hide_own ? 0.0f : cfg.own_size / 100.0f;
     const auto it = std::lower_bound(s_actors.begin(), s_actors.end(), ActorKind{ actor, Kind::Npc });
     if (it == s_actors.end() || it->actor != actor) return 1.0f;
@@ -61,12 +65,14 @@ float LabelScale(uintptr_t actor)
 // One callback, so the health line is always placed before the icons that go under it.
 void DrawAfterLabels()
 {
+    if (!s_inWorld) return;
     health::Draw();
     debuffs::Draw();
 }
 
 void OnFrame()
 {
+    s_inWorld = cfg.enabled && game::InWorld();
     if (!cfg.enabled) {
         s_actors.clear();
         s_ownActor = 0;
@@ -75,7 +81,12 @@ void OnFrame()
         game::labels::Init();
         game::labels::SetPolicy(LabelScale);
         game::labels::AfterLabels(DrawAfterLabels);   // registered once
-        BuildActors();
+        if (s_inWorld) {
+            BuildActors();
+        } else {
+            s_actors.clear();
+            s_ownActor = 0;
+        }
     }
     health::OnFrame();
     debuffs::OnFrame();
