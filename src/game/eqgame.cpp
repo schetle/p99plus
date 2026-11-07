@@ -8,6 +8,7 @@ namespace game {
 namespace {
 bool s_ok = false;
 bool s_checked = false;
+bool s_eyeOk = false;     // kEyeHeight is the expected code
 } // namespace
 
 void Check()
@@ -23,6 +24,8 @@ void Check()
         return;
     }
     s_ok = true;
+    s_eyeOk = mem::Matches((void*)kEyeHeight, kEyeHeightPrologue, sizeof(kEyeHeightPrologue));
+    if (!s_eyeOk) Log("game: unexpected code at %p (eye height); using a fixed height", (void*)kEyeHeight);
 }
 
 bool Available() { return s_ok; }
@@ -58,6 +61,58 @@ bool ReadPos(uintptr_t p, int zOffset, math::Vec3& pos)
 bool PlayerPos(math::Vec3& pos) { return ReadPos(PlayerBase(), spawn::kZ, pos); }
 
 bool SpawnCameraPos(uintptr_t s, math::Vec3& pos) { return s_ok && ReadPos(s, spawn::kCamZ, pos); }
+
+uintptr_t LocalPlayer()
+{
+    if (!s_ok) return 0;
+    uintptr_t p = mem::Read<uintptr_t>(addr::kLocalPlayer);
+    return p > 0x10000 ? p : 0;
+}
+
+uintptr_t SpawnById(int id)
+{
+    if (!s_ok || id <= 0 || id >= addr::kMaxSpawnId) return 0;
+    uintptr_t p = mem::Read<uintptr_t>(addr::kSpawnTable + id * 4);
+    return p > 0x10000 ? p : 0;
+}
+
+int SpawnId(uintptr_t s) { return s ? mem::Read<int>(s + spawn::kId) : 0; }
+
+bool IsPetOf(uintptr_t s, int ownerId)
+{
+    return s && ownerId > 0 && mem::Read<unsigned char>(s + spawn::kHasMaster) != 0 &&
+           mem::Read<int>(s + spawn::kMasterId) == ownerId;
+}
+
+int SpawnHp(uintptr_t s) { return s ? mem::Read<int>(s + spawn::kHp) : 0; }
+
+bool SpawnLabelRect(uintptr_t s, int& left, int& top, int& right, int& bottom)
+{
+    if (!s_ok || !s) return false;
+    const uintptr_t holder = mem::Read<uintptr_t>(s + spawn::kActor);
+    const uintptr_t eng = holder > 0x10000 ? mem::Read<uintptr_t>(holder) : 0;
+    const uintptr_t tag = eng > 0x10000 ? mem::Read<uintptr_t>(eng + actor::kNameTag) : 0;
+    if (tag <= 0x10000) return false;
+    left = mem::Read<int>(tag + actor::kTagRect);
+    top = mem::Read<int>(tag + actor::kTagRect + 4);
+    right = mem::Read<int>(tag + actor::kTagRect + 8);
+    bottom = mem::Read<int>(tag + actor::kTagRect + 12);
+    return right > left && bottom > top;
+}
+
+bool SpawnEyePos(uintptr_t s, math::Vec3& pos, float* eyeHeight)
+{
+    if (!SpawnCameraPos(s, pos)) return false;
+    float h = 5.0f;   // about a human's eye height, when the game's function can't be used
+    if (s_eyeOk) {
+        using EyeHeight_t = float (__thiscall*)(void* spawn);
+        h = ((EyeHeight_t)addr::kEyeHeight)((void*)s);
+        if (!(h > 0.0f && h < 200.0f)) h = 5.0f;
+    }
+    pos.z += h;
+    if (eyeHeight) *eyeHeight = h;
+    return true;
+}
 
 float PlayerHeading()
 {

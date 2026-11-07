@@ -6,6 +6,7 @@
 // the same object. If the engine hooks can't be installed, a Direct3D-level fallback offsets
 // the view matrix instead (d3d_fallback.cpp).
 #include "core/feature.h"
+#include "util/math.h"
 
 namespace camera {
 
@@ -50,6 +51,10 @@ struct Status { bool firstPerson; bool fadeActive; float distance; float percent
 Status GetStatus();
 
 const char* FovProblem();          // nullptr when the FOV hook is working or still starting up
+
+// Where a world point shows on screen, in game screen pixels (with the offset, orbit and FOV the
+// world was drawn with). False when it is behind the camera or the world camera isn't known yet.
+bool ProjectToScreen(math::Vec3 world, float& x, float& y);
 
 namespace orbit {
 bool Enabled();                    // the setting

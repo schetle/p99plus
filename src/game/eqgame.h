@@ -68,6 +68,22 @@ inline constexpr uintptr_t kEverQuest     = 0x988df0;  // CEverQuest*
 // eqstr_*.txt texts: const char* __thiscall(table [kStringTable], int id, int), ret 8.
 inline constexpr uintptr_t kStringTable   = 0x905cb0;
 inline constexpr uintptr_t kGetString     = 0x5dfa00;
+// Combat: every hit the client turns into a combat line (melee, spells, local damage) goes through
+// kHitReport (__thiscall(CEverQuest* [kEverQuest], const hit*, bool, int), ret 0xc). Callers: the
+// damage packet handler (0x452d37), the spell action code (0x4a8f75), local damage (0x41d39f).
+inline constexpr uintptr_t kHitReport     = 0x4a56e3;
+inline constexpr uintptr_t kLocalPlayer   = 0x905ce4;  // the player's own spawn (the one "YOU" lines compare with)
+inline constexpr uintptr_t kSpawnTable    = 0x900f50;  // spawn* per spawn id, 0 < id < kMaxSpawnId (what 0x401b28 reads)
+inline constexpr int       kMaxSpawnId    = 3000;
+inline constexpr uintptr_t kEyeHeight     = 0x489bf5;  // float __thiscall(spawn): eye height above spawn::kCamZ
+// Text in the game's own fonts. The fonts are listed in the window manager (wnd::kMgrFonts);
+// each is a CTextureFont.
+inline constexpr uintptr_t kFontDraw      = 0x5a3c80;  // int __thiscall(font, const CXStr&, x, y, width, const CXRect& clip, argb, flags, startX), ret 0x20
+inline constexpr uintptr_t kFontWidth     = 0x5a3a00;  // int __thiscall(font, const CXStr&), ret 4: width in pixels
+inline constexpr uintptr_t kFontHeight    = 0x5a3a20;  // int __thiscall(font): line height in pixels
+// The main loop, right after the game draws its own net-status text (0x4456ca, only when /netstat
+// is on): `mov ecx,[0x985c88]` (6 bytes), reached every pass. Our text is drawn from there.
+inline constexpr uintptr_t kHudPoint      = 0x4456d2;
 } // namespace addr
 
 // The zone list object: record pointers at +0x1c + id*4; each record has the long name at
@@ -83,7 +99,20 @@ inline constexpr int kX = 0x30, kY = 0x34, kZ = 0x2C;          // found in-game 
 inline constexpr int kCamZ = 0x38;                             // the z the camera controllers build on (eye height goes on top)
 inline constexpr int kHeading = 0x4c, kTurnSpeed = 0x58, kPitch = 0x5c;
 inline constexpr int kZoneId = 0x204;                          // the zone the character is in
+inline constexpr int kName = 0x120;                            // char[0x40]
+inline constexpr int kHasMaster = 0x1b3;                       // byte: set on pets (tested before kMasterId)
+inline constexpr int kId = 0x258;                              // spawn id
+inline constexpr int kMasterId = 0x25c;                        // the owner's spawn id (pets)
+inline constexpr int kHp = 0x274;                              // current HP (exact on the player's own spawn)
+inline constexpr int kActor = 0x1a8;                           // actor holder: [holder] is the engine actor
 } // namespace spawn
+
+// The engine actor (EQGraphicsDX9.dll) behind a spawn: [[spawn + spawn::kActor]].
+namespace actor {
+inline constexpr int kNameTag = 0x1a0;      // the name label object (set through the actor's vtable +0x140), or 0
+inline constexpr int kTagRect = 0x10;       // in the label: left, top, right, bottom in screen pixels, written
+                                            // when the engine draws the label (stale while it isn't drawn)
+} // namespace actor
 
 // Fields of a UI window (CXWnd / CSidlScreenWnd) and its vtable.
 namespace wnd {
@@ -102,6 +131,8 @@ inline constexpr int kStoreIni = 0x11c;     // vtable offset: StoreIniInfo(), wr
 inline constexpr int kSidlSize = 0x15c;     // sizeof(CSidlScreenWnd)
 inline constexpr int kMgrCount = 0x4;       // in the UI manager: number of live windows
 inline constexpr int kMgrItems = 0x8;       // in the UI manager: CXWnd** to them
+inline constexpr int kMgrFontCount = 0xf4;  // in the UI manager: number of fonts
+inline constexpr int kMgrFonts = 0xf8;      // in the UI manager: CTextureFont** (the net-status text uses [2])
 // Flags and mode the inventory window is built with: position, fade and lock go to the ini.
 inline constexpr unsigned kIniFlags = 0xfffffeff;
 inline constexpr int kIniMode = 2;
@@ -142,6 +173,19 @@ inline constexpr unsigned char kResetGameUiPrologue[] = { 0x56, 0x57, 0x68, 0xf8
 
 inline constexpr unsigned char kDragSizableTestBytes[] = { 0x8b, 0x57, 0x64, 0xf6, 0xc6, 0x02, 0x75, 0x59 };
 
+// push ebp; mov eax,0x13c4; lea ebp,[esp-0x134c]
+inline constexpr unsigned char kHitReportPrologue[] = { 0x55, 0xb8, 0xc4, 0x13, 0x00, 0x00, 0x8d, 0xac, 0x24, 0xb4, 0xec, 0xff, 0xff };
+// push esi; mov esi,ecx; push edi; lea edi,[esi+0x1a8]
+inline constexpr unsigned char kEyeHeightPrologue[] = { 0x56, 0x8b, 0xf1, 0x57, 0x8d, 0xbe, 0xa8, 0x01, 0x00, 0x00 };
+// sub esp,0x10; mov edx,[esp+0x1c]
+inline constexpr unsigned char kFontDrawPrologue[] = { 0x83, 0xec, 0x10, 0x8b, 0x54, 0x24, 0x1c };
+// mov eax,[esp+4]; mov ecx,[ecx+4]; push eax; push ecx
+inline constexpr unsigned char kFontWidthPrologue[] = { 0x8b, 0x44, 0x24, 0x04, 0x8b, 0x49, 0x04, 0x50, 0x51 };
+// mov eax,[ecx+4]; push eax
+inline constexpr unsigned char kFontHeightPrologue[] = { 0x8b, 0x41, 0x04, 0x50 };
+// mov ecx,[0x985c88]
+inline constexpr unsigned char kHudPointBytes[] = { 0x8b, 0x0d, 0x88, 0x5c, 0x98, 0x00 };
+
 // mov eax, <seh handler>   (then call __SEH_prolog)
 inline constexpr unsigned char kChatPrintPrologue[] = { 0xb8, 0x0a, 0x70, 0x62, 0x00 };
 
@@ -163,6 +207,20 @@ bool      SpawnCameraPos(uintptr_t spawnBase, math::Vec3& pos);
 // How far right-click mouselook turns per mouse count, in radians (yaw at the 60 FPS rate,
 // which is what frame-rate independent mouselook gives), and whether the game inverts Y.
 bool MouselookRates(float& yawRad, float& pitchRad, bool& invert);
+
+// The player's own spawn ([kLocalPlayer]), or 0.
+uintptr_t LocalPlayer();
+// The spawn with this id, or 0 (read from the game's table; valid until the spawn leaves).
+uintptr_t SpawnById(int id);
+int       SpawnId(uintptr_t spawnBase);          // 0 for a bad spawn
+bool      IsPetOf(uintptr_t spawnBase, int ownerId);
+int       SpawnHp(uintptr_t spawnBase);          // current HP (exact only for the player's own spawn)
+// Where the spawn's eyes are, in world coordinates (camera z + the game's eye height, which also
+// goes to *eyeHeight).
+bool      SpawnEyePos(uintptr_t spawnBase, math::Vec3& pos, float* eyeHeight = nullptr);
+
+// The screen rectangle the engine last drew the spawn's name label in. False when it has none.
+bool      SpawnLabelRect(uintptr_t spawnBase, int& left, int& top, int& right, int& bottom);
 
 // The long name of the zone the character is in ("Butcherblock Mountains"). False when there is
 // no character or the zone is unknown.

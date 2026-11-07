@@ -7,6 +7,7 @@ A `dinput8.dll` proxy for the EverQuest **Titanium** client that adds an in-game
 - FPS-independent horizontal mouse turning and separate X/Y sensitivity
 - removal of the mouselook axis dead-zone
 - a small game window with the zone you are in, the result of your last Sense Heading and your last `/loc`
+- floating combat text: damage, misses and heals shown over the one they happen to, in the game's own font
 - an optional frame limiter
 
 > Check your server's rules before using. Injected DLLs are typically treated like MacroQuest.
@@ -38,7 +39,7 @@ A "loaded" banner appears at the top of the screen for about 10 seconds after th
 
 Press **Insert** to open the menu. While it's open, the game gets no mouse or keyboard input. The key can be changed under *Overlay → Menu toggle key*. Ctrl+click any slider to type an exact value.
 
-Each feature has its own tab with a short description. Mouse and Limiter have an **Enable …** checkbox at the top and Zone info a **Show …** one; switching it off greys out the tab and leaves that part of the game as it was. Camera has a switch per section instead, and Overlay has none.
+Each feature has its own tab with a short description. Mouse and Limiter have an **Enable …** checkbox at the top, and Zone info and Combat text a **Show …** one; switching it off greys out the tab and turns the feature off. Camera has a switch per section instead, and Overlay has none.
 
 ### Mouse
 
@@ -88,7 +89,22 @@ Untick *Enable Pin Location* (under *Last Location* in the tab) to remove the ch
 
 Drag the window to move it and drag its edges to resize it. Its position and size are saved with your other windows in the character's UI ini (`UI_<character>_<server>.ini`). Untick *Show the zone info window* to remove it.
 
-The game only knows a window if it is part of the skin it loads, so the first time you enter the world p99plus writes two small files into your skin folder (`UIFiles\<skin>`): `EQUI_P99PlusZoneInfoWnd.xml` and `EQUI_p99plus.xml`, a copy of the skin's `EQUI.xml` with one extra line. The game is told to load the copy. If you switch skins, the files are written to the new one. They are safe to delete; they are recreated on the next load. If the game ever rejects them, p99plus loads your skin unchanged and the window stays off until you restart the game.
+The first time you enter the world, p99plus adds two small files to your skin folder (`UIFiles\<skin>`): `EQUI_P99PlusZoneInfoWnd.xml` and `EQUI_p99plus.xml`. If you switch skins, they are added to the new one. They are safe to delete; they come back on the next load. If the game ever rejects them, your skin loads as usual and the window stays off until you restart the game.
+
+### Combat text
+
+Numbers and words over the one a hit or heal happens to, in the game's own font, starting just above the name label: red for damage, grey for a miss (`Miss`, `Block`, `Parry`, `Riposte`, `Dodge`, `Invulnerable`, `Absorbed`), green for a heal. Each one stays for a moment, fades out and drifts up a little. Texts that start together on the same target stack instead of overlapping.
+
+- `Show combat text` (on by default): turns it all on or off.
+- `Attacks on you`: hits and misses on you, over your head (in first person, just above the middle of the screen).
+- `Attacks on enemies`: your hits and misses, and your pet's, over the one attacked.
+- `Heals on you`: your HP going up, shown where hits on you are, as one `+N` per heal. This includes regen; `Smallest heal` hides gains below it, so most regen ticks stay out.
+- `Show time` and `Fade time`: how long a text stays at full strength, then how long it takes to fade.
+- `Rise`: how far, in pixels, a text drifts up while it is shown.
+- `Start height`: moves where texts start, in pixels above the name label (negative goes lower).
+- `Font size`: one of the game's font sizes, as in `/chatfontsize`.
+
+The hits shown are the ones the game prints in your chat window. Heals on others aren't shown: the game only knows their health as a percentage.
 
 ### Limiter
 

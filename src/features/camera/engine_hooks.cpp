@@ -51,7 +51,9 @@ void __fastcall Hk_Builder(void* self, void* edx)
     }
     orbit::AngCommit(self, angNative, angOut);
 
+    view::BeginBuilder(Record(self).main);
     oBuilder(self, edx);
+    view::EndBuilder();
 }
 
 // The game sets the camera angles: store real angles + orbit instead.

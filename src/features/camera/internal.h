@@ -16,6 +16,10 @@ const D3DMATRIX* View();           // nullptr until the game has set one
 const D3DMATRIX* Projection();
 // The camera's right and forward vectors in world space; false until a view is known.
 bool Axes(math::Vec3& right, math::Vec3& forward);
+// Around the engine builder's run for a camera: what it sets through Direct3D while `main` is the
+// world camera is kept as the world view/projection (see camera::ProjectToScreen).
+void BeginBuilder(bool main);
+void EndBuilder();
 // True once the engine camera hooks are driving the camera (the Direct3D fallback then stands down).
 void SetEngineActive();
 bool EngineActive();
