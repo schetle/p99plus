@@ -36,11 +36,13 @@ struct FovSettings {
     float third_person = 0;
 };
 
-// The camera is three independent systems, each with its own switch.
+// The camera is three independent systems, each with its own switch, plus a fix of the game's.
 struct Settings {
     OffsetSettings offset;
     OrbitSettings  orbit;
     FovSettings    fov;
+    bool fix_north_jump = true;       // the game points the camera 0.1 % short of the real heading,
+                                      // so the view jumps a little when you turn through north
 };
 extern Settings cfg;
 

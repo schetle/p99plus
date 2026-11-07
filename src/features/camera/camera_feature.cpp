@@ -32,6 +32,7 @@ const Setting kSettings[] = {
     BoolSetting ("fov", "enabled", &cfg.fov.enabled, "Control the field of view; off leaves the game's own."),
     FloatSetting("fov", "first_person", &cfg.fov.first_person, 0.0f, 170.0f, "Vertical field of view in degrees in first person; 0 = default (widens horizontally to fit the screen)."),
     FloatSetting("fov", "third_person", &cfg.fov.third_person, 0.0f, 170.0f, "Vertical field of view in degrees in third person; 0 = default."),
+    BoolSetting ("camera", "fix_north_jump", &cfg.fix_north_jump, "Fix the game's heading math that makes the camera jump a little when you turn through north."),
 };
 
 void DrawOffsets(const char* id, ModeSettings& m)
@@ -105,6 +106,8 @@ void DrawMenu()
     DrawFovSection();
     DrawOffsetSection();
     DrawOrbitSection();
+    ImGui::SeparatorText("Fixes");
+    ImGui::Checkbox("Fix camera jump facing north", &cfg.fix_north_jump);
 }
 
 void OnFrame()
@@ -112,6 +115,7 @@ void OnFrame()
     EngineHooksOnFrame();
     GameHooksOnFrame();
     orbit::OnFrame();
+    NorthFixOnFrame();
 }
 
 } // namespace

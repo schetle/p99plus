@@ -75,6 +75,10 @@ Hold the middle mouse button and drag to rotate the camera around your character
 - `Return camera when you release`: the camera swings back as soon as you let go of the button.
 - `Return camera when you move`: the camera also swings back when you move or turn. Greyed out while the option above is on.
 
+#### Fixes
+
+- `Fix camera jump facing north` (on by default): the game points the camera a fraction of a degree short of where your character faces, and the gap closes all at once as you turn through north, so the view jumps a little there. This removes the jump.
+
 ### Zone info
 
 A small window in the game's own style, with a border like the game's other windows and up to three lines. Each line has its own checkbox on the Zone info page (*Zone name*, *Heading*, *Last Location*); the lines that are on are shown from the top with no gaps, and with all three off the window goes away.

@@ -25,6 +25,9 @@ void SetEngineActive();
 bool EngineActive();
 } // namespace view
 
+// ---- the game's heading scale (north_fix.cpp) ---------------------------------------------------
+void NorthFixOnFrame();   // puts the game's 511.5 or a correct 512 in, as the setting says
+
 // ---- per engine camera object (records.cpp) ---------------------------------------------------
 struct CameraRecord {
     ReadBack<1> fov;       // half-FOV

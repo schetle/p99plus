@@ -10,6 +10,11 @@ namespace game {
 namespace addr {
 inline constexpr uintptr_t kImageBase    = 0x400000;
 inline constexpr uintptr_t kMouselook    = 0x4929dd;   // mouselook function (reads the per-frame deltas)
+// float 511.5: the heading-between-two-points function (0x46e42f, 16 callers, among them the
+// camera controllers) turns degrees into heading as degrees / 360 * this, where a circle is 512,
+// so every heading it returns is 0.1 % short and jumps by half a unit at north.
+inline constexpr uintptr_t kHeadingScale = 0x64604c;
+inline constexpr float     kHeadingScaleGame = 511.5f;
 inline constexpr uintptr_t kDeadzoneYaw  = 0x492a68;   // jp 0x492a78: skips zeroing the heading
 inline constexpr uintptr_t kDeadzonePit  = 0x492c3c;   // jp 0x492c4c: skips zeroing the pitch
 inline constexpr uintptr_t kPlayerPtr    = 0x905cf8;   // pointer to the controlled spawn
