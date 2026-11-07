@@ -13,7 +13,10 @@ struct Settings {
     int   height = 0;         // pixels above the default start (just over the spawn's name label)
     int   font = 3;           // game font index (as in /chatfontsize)
     bool  on_you = true;      // hits and misses on you, over your head
+    bool  on_pet = true;      // hits and misses on your pet, over it
     bool  on_enemies = true;  // your (and your pet's) hits and misses on others, over them
+    bool  from_others = false;// other players' (and their pets') hits and misses, over the one attacked
+    bool  other_fights = false;// NPCs' hits and misses on anyone but you and your pet, over the one attacked
     bool  heals = true;       // your own HP gains, over your head
     int   heal_min = 10;      // smallest HP gain shown (keeps most regen ticks out)
 };

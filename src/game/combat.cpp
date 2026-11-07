@@ -19,7 +19,7 @@ bool s_ok = false;
 
 // The hit as the client keeps it (packed): target id u16 +0, source id u16 +2, type u8 +4,
 // spell id u16 +5, damage i32 +7.
-Hit Decode(const unsigned char* p)
+Hit Decode(const unsigned char* p, bool printed)
 {
     unsigned short target, source, spell;
     int damage;
@@ -27,14 +27,14 @@ Hit Decode(const unsigned char* p)
     memcpy(&source, p + 2, 2);
     memcpy(&spell, p + 5, 2);
     memcpy(&damage, p + 7, 4);
-    return { target, source, p[4], spell, damage };
+    return { target, source, p[4], spell, damage, printed };
 }
 
 int __fastcall Hk_HitReport(void* self, void* /*edx*/, const unsigned char* hit, int show, int extra)
 {
     hook::Busy busy;
     if (hit) {
-        const Hit h = Decode(hit);
+        const Hit h = Decode(hit, show != 0);
         for (Listener fn : s_listeners) fn(h);
     }
     return oHitReport(self, hit, show, extra);

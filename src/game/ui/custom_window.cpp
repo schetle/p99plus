@@ -103,9 +103,6 @@ Dtor_t  oDtor = nullptr;
 bool s_tried = false;
 bool s_ok = false;
 
-// The in-world windows exist (between kBuildGameUi and kResetGameUi), read from the game itself.
-bool UiBuilt() { return mem::Read<uintptr_t>(addr::kInventoryWnd) != 0; }
-
 // Our windows are game objects (the game's vtable and controls, nothing of ours), so they stay up
 // through a core reload and the next core takes them over by screen name. Deleting and rebuilding
 // them in the reload's frame left the new window invisible until it was rebuilt again.
@@ -274,7 +271,7 @@ void Shutdown()
 
 void Tick()
 {
-    if (!s_ok || !UiBuilt()) return;
+    if (!s_ok || !game::InWorld()) return;
     if (s_numKept) Adopt();
     for (CustomWindow* w : Registry()) {
         if (detail::g_inject.failed) continue;

@@ -84,6 +84,14 @@ bool IsPetOf(uintptr_t s, int ownerId)
            mem::Read<int>(s + spawn::kMasterId) == ownerId;
 }
 
+bool IsPlayer(uintptr_t s) { return s && mem::Read<unsigned char>(s + spawn::kType) == 0; }
+
+bool IsPlayersPet(uintptr_t s)
+{
+    if (!s || mem::Read<unsigned char>(s + spawn::kHasMaster) == 0) return false;
+    return IsPlayer(SpawnById(mem::Read<int>(s + spawn::kMasterId)));
+}
+
 int SpawnHp(uintptr_t s) { return s ? mem::Read<int>(s + spawn::kHp) : 0; }
 
 bool SpawnLabelRect(uintptr_t s, int& left, int& top, int& right, int& bottom)
@@ -102,6 +110,10 @@ bool SpawnLabelRect(uintptr_t s, int& left, int& top, int& right, int& bottom)
 
 bool SpawnEyePos(uintptr_t s, math::Vec3& pos, float* eyeHeight)
 {
+    // The game's eye height reads the spawn's model ([[s + kActor]]), which doesn't exist yet
+    // while a zone loads: calling it then dereferences null.
+    const uintptr_t holder = s ? mem::Read<uintptr_t>(s + spawn::kActor) : 0;
+    if (holder <= 0x10000 || mem::Read<uintptr_t>(holder) <= 0x10000) return false;
     if (!SpawnCameraPos(s, pos)) return false;
     float h = 5.0f;   // about a human's eye height, when the game's function can't be used
     if (s_eyeOk) {
@@ -169,5 +181,7 @@ int ZoneId()
     const int id = mem::Read<int>(player + spawn::kZoneId) & 0xffff;
     return (id >= 1 && id <= zonelist::kMaxId) ? id : 0;
 }
+
+bool InWorld() { return s_ok && mem::Read<uintptr_t>(addr::kInventoryWnd) != 0; }
 
 } // namespace game

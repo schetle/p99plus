@@ -100,6 +100,7 @@ inline constexpr int kCamZ = 0x38;                             // the z the came
 inline constexpr int kHeading = 0x4c, kTurnSpeed = 0x58, kPitch = 0x5c;
 inline constexpr int kZoneId = 0x204;                          // the zone the character is in
 inline constexpr int kName = 0x120;                            // char[0x40]
+inline constexpr int kType = 0x244;                            // byte: 0 player, 1 NPC, 3 corpse
 inline constexpr int kHasMaster = 0x1b3;                       // byte: set on pets (tested before kMasterId)
 inline constexpr int kId = 0x258;                              // spawn id
 inline constexpr int kMasterId = 0x25c;                        // the owner's spawn id (pets)
@@ -214,9 +215,11 @@ uintptr_t LocalPlayer();
 uintptr_t SpawnById(int id);
 int       SpawnId(uintptr_t spawnBase);          // 0 for a bad spawn
 bool      IsPetOf(uintptr_t spawnBase, int ownerId);
+bool      IsPlayer(uintptr_t spawnBase);             // a player character (not an NPC or corpse)
+bool      IsPlayersPet(uintptr_t spawnBase);         // a pet whose owner is a player character
 int       SpawnHp(uintptr_t spawnBase);          // current HP (exact only for the player's own spawn)
 // Where the spawn's eyes are, in world coordinates (camera z + the game's eye height, which also
-// goes to *eyeHeight).
+// goes to *eyeHeight). False while the spawn has no model yet (zoning, just arrived).
 bool      SpawnEyePos(uintptr_t spawnBase, math::Vec3& pos, float* eyeHeight = nullptr);
 
 // The screen rectangle the engine last drew the spawn's name label in. False when it has none.
@@ -227,5 +230,8 @@ bool      SpawnLabelRect(uintptr_t spawnBase, int& left, int& top, int& right, i
 bool ZoneName(std::string& name);
 // The zone id the character is in (instance bits removed), or 0.
 int ZoneId();
+// The in-world UI is built (between kBuildGameUi and kResetGameUi): the character is in a zone
+// that has finished loading. False at character select and while zoning.
+bool InWorld();
 
 } // namespace game

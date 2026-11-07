@@ -11,6 +11,7 @@ struct Hit {
     int type;       // skill / damage type; kSpellType and up are spells and other non-melee damage
     int spell;      // spell id for spell damage
     int damage;     // > 0 = damage done; for melee, <= 0 is one of the Avoid codes
+    bool printed;   // the client prints it (false for a fight between others that is too far away)
 };
 
 inline constexpr int kSpellType = 231;

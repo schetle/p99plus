@@ -1,7 +1,8 @@
 // Combat text. Hits come from the client's hit report (game/combat.h): damage over the one hit,
-// misses and avoids over the defender, for hits on you and hits by you or your pet. Heals are your own HP
+// misses and avoids over the defender, for hits on you or your pet, hits by you or your pet and
+// (optionally) hits by other players and their pets, and NPCs' fights. Heals are your own HP
 // gains, added up over a moment so one heal is one number. Text is drawn with the game's fonts
-// (game/hud.h) at the spawn's head, re-found by id every frame so it follows the spawn.
+// (game/hud.h) over the spawn's name label, re-found by id every frame so it follows the spawn.
 #include "features/combattext/combat_text.h"
 #include "features/camera/camera.h"
 #include "game/combat.h"
@@ -31,7 +32,7 @@ struct Entry {
     Kind       kind = Kind::Damage;
     char       text[24] = "";
     LONGLONG   start = 0;
-    int        stack = 0;      // lines up, so texts started together on one spawn don't overlap
+    float      lift = 0;       // pixels pushed up by newer texts on the same spawn (animated)
 };
 
 constexpr int kMaxEntries = 64;
@@ -40,7 +41,9 @@ Entry s_entries[kMaxEntries];
 constexpr uint32_t kDamageColor = 0xffe03030;
 constexpr uint32_t kHealColor   = 0xff30e030;
 constexpr uint32_t kAvoidColor  = 0xffc0c0c0;
-constexpr float    kStackWindow = 0.3f;   // seconds: a new text this soon after another on the spawn goes a line up
+// Texts on one spawn stack: the newest starts at the bottom and pushes the older ones up a line.
+constexpr int      kMaxPerSpawn = 5;      // a new text beyond this replaces the spawn's oldest
+constexpr float    kPushSpeed   = 18.0f;  // how fast pushed texts slide to their new line (1/s)
 constexpr float    kHealGather  = 0.15f;  // seconds HP gains are added up into one number
 // Texts start just over the spawn's name label, where the engine last drew it. Without one (no
 // label, or a stale one that doesn't line up with the spawn) they start at an estimate above the
@@ -102,12 +105,16 @@ void Add(int spawnId, Kind kind, const char* text)
 {
     const LONGLONG now = timing::Ticks();
     Entry* slot = nullptr;
-    int stack = 0;
+    Entry* oldestHere = nullptr;
+    int here = 0;
     for (Entry& e : s_entries) {
         if (!e.used) { if (!slot) slot = &e; continue; }
-        if (e.spawnId == spawnId && Seconds(now - e.start) < kStackWindow && e.stack >= stack) stack = e.stack + 1;
+        if (e.spawnId != spawnId) continue;
+        ++here;
+        if (!oldestHere || e.start < oldestHere->start) oldestHere = &e;
     }
-    if (!slot) {   // full: replace the oldest
+    if (here >= kMaxPerSpawn) slot = oldestHere;   // the spawn's stack is full: drop its oldest
+    if (!slot) {                                   // all in use: replace the oldest overall
         slot = &s_entries[0];
         for (Entry& e : s_entries) if (e.start < slot->start) slot = &e;
     }
@@ -116,7 +123,6 @@ void Add(int spawnId, Kind kind, const char* text)
     slot->spawnId = spawnId;
     slot->kind = kind;
     slot->start = now;
-    slot->stack = stack % 4;
     snprintf(slot->text, sizeof(slot->text), "%s", text);
     if (uintptr_t s = game::SpawnById(spawnId)) slot->havePos = StartPoint(s, slot->pos);
 }
@@ -141,9 +147,19 @@ void OnHit(const game::combat::Hit& h)
     if (!me) return;
     if (h.target == me) {
         if (!cfg.on_you) return;
+    } else if (game::IsPetOf(game::SpawnById(h.target), me)) {
+        if (!cfg.on_pet) return;
     } else {
-        const bool byUs = h.source > 0 && (h.source == me || game::IsPetOf(game::SpawnById(h.source), me));
-        if (!byUs || !cfg.on_enemies) return;
+        const uintptr_t source = game::SpawnById(h.source);
+        if (h.source == me || game::IsPetOf(source, me)) {
+            if (!cfg.on_enemies) return;
+        } else if (!source || !h.printed) {
+            return;   // no attacker (e.g. falling), or a fight too far away for the chat
+        } else if (game::IsPlayer(source) || game::IsPlayersPet(source)) {
+            if (!cfg.from_others) return;
+        } else {
+            if (!cfg.other_fights) return;
+        }
     }
 
     if (h.damage > 0) {
@@ -161,8 +177,9 @@ void TrackHeals()
     const int zone = game::ZoneId();
     const int hp = game::SpawnHp(player);
     const LONGLONG now = timing::Ticks();
-    if (!player || player != s_hp.player || zone != s_hp.zone || s_hp.last <= 0) {
-        // A new character or zone (or no HP yet): start over from here.
+    if (!game::InWorld() || !player || player != s_hp.player || zone != s_hp.zone || s_hp.last <= 0) {
+        // Not in a loaded zone, a new character or zone, or no HP yet: start over from here. HP
+        // jumps while a zone loads (items and buffs arriving) and isn't a heal.
         s_hp = { player, zone, hp, 0, 0 };
         return;
     }
@@ -190,10 +207,23 @@ uint32_t ColorOf(Kind k)
     }
 }
 
+// How many live texts on the same spawn are newer than `e` (its line in the stack, 0 = bottom).
+int NewerOnSpawn(const Entry& e)
+{
+    int n = 0;
+    for (const Entry& o : s_entries)
+        if (o.used && &o != &e && o.spawnId == e.spawnId && o.start > e.start) ++n;
+    return n;
+}
+
+timing::FrameTimer s_drawTimer;
+
 // Called by game::hud once per rendered frame.
 void Draw()
 {
     const LONGLONG now = timing::Ticks();
+    const float dt = s_drawTimer.Tick();
+    const float push = math::Clamp(dt * kPushSpeed, 0.0f, 1.0f);
     const float total = cfg.show_time + cfg.fade_time;
     const int me = game::SpawnId(game::LocalPlayer());
     for (Entry& e : s_entries) {
@@ -216,9 +246,11 @@ void Draw()
                           : 1.0f - (age - cfg.show_time) / (cfg.fade_time > 0.001f ? cfg.fade_time : 0.001f);
         const uint32_t a = (uint32_t)(math::Clamp(alpha, 0.0f, 1.0f) * 255.0f + 0.5f);
         if (!a) continue;
+        const float line = (float)(h + 1);
+        e.lift += (NewerOnSpawn(e) * line - e.lift) * push;
         const float rise = cfg.rise * (total > 0 ? age / total : 0.0f);
         const int tx = (int)(x - w * 0.5f);
-        const int ty = (int)(y - h - cfg.height - rise - e.stack * h);
+        const int ty = (int)(y - h - cfg.height - rise - e.lift);
         game::hud::Text(tx, ty, (a << 24) | (ColorOf(e.kind) & 0x00ffffff), cfg.font, e.text);
     }
 }
@@ -252,7 +284,12 @@ const Setting kSettings[] = {
                  "Where texts start, in pixels above the default (just over the name label); negative goes lower."),
     IntSetting  ("combat_text", "font", &cfg.font, 0, 15, "Game font size (as in /chatfontsize)."),
     BoolSetting ("combat_text", "on_you", &cfg.on_you, "Show hits and misses on you, over your head."),
+    BoolSetting ("combat_text", "on_pet", &cfg.on_pet, "Show hits and misses on your pet, over it."),
     BoolSetting ("combat_text", "on_enemies", &cfg.on_enemies, "Show your and your pet's hits and misses, over the one attacked."),
+    BoolSetting ("combat_text", "from_others", &cfg.from_others,
+                 "Show other players' and their pets' hits and misses (those your chat shows), over the one attacked."),
+    BoolSetting ("combat_text", "other_fights", &cfg.other_fights,
+                 "Show NPCs' hits and misses on others, such as guards fighting monsters (those your chat shows)."),
     BoolSetting ("combat_text", "heals", &cfg.heals, "Show your own HP gains (heals, regen) in green, over your head."),
     IntSetting  ("combat_text", "heal_min", &cfg.heal_min, 1, 1000, "Smallest HP gain shown; smaller ones (most regen ticks) are left out."),
 };
@@ -266,7 +303,10 @@ void DrawMenu()
     const int fonts = game::hud::FontCount();
     ui::SliderI("Font size", &cfg.font, 0, fonts > 0 ? fonts - 1 : 15);
     ImGui::Checkbox("Attacks on you", &cfg.on_you);
+    ImGui::Checkbox("Attacks on your pet", &cfg.on_pet);
     ImGui::Checkbox("Attacks on enemies", &cfg.on_enemies);
+    ImGui::Checkbox("Attacks from other players", &cfg.from_others);
+    ImGui::Checkbox("Other fights", &cfg.other_fights);
     ImGui::Checkbox("Heals on you", &cfg.heals);
     ImGui::Indent();
     ImGui::BeginDisabled(!cfg.heals);
