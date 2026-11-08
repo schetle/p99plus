@@ -57,8 +57,11 @@ bool HeaderLine(const std::string& line, std::string& key, std::string& value)
 
 std::string Serialize(const Note& n)
 {
-    return text::ToCrlf("# " + n.created + "\n\n- **Zone:** " + OneLine(n.zone) + "\n- **Loc:** " + OneLine(n.loc) +
-                        "\n- **Character:** " + OneLine(n.character) + "\n\n" + n.text);
+    std::string header = "# " + n.created + "\n\n- **Zone:** " + OneLine(n.zone) + "\n- **Loc:** " + OneLine(n.loc) +
+                         "\n- **Character:** " + OneLine(n.character) + "\n";
+    if (!n.updated.empty())
+        header += "- **Updated:** " + OneLine(n.updated) + "\n- **Updated by:** " + OneLine(n.updatedBy) + "\n";
+    return text::ToCrlf(header + "\n" + n.text);
 }
 
 void Parse(const std::string& file, Note& n)
@@ -74,7 +77,7 @@ void Parse(const std::string& file, Note& n)
 
     // The header: one blank line, then the lines we write (each once), then one blank line.
     SkipBlankLine(s, pos);
-    bool zone = false, loc = false, who = false;
+    bool zone = false, loc = false, who = false, updated = false, updatedBy = false;
     for (;;) {
         size_t next = pos;
         std::string key, value;
@@ -82,6 +85,8 @@ void Parse(const std::string& file, Note& n)
         if (key == "Zone" && !zone) { n.zone = value; zone = true; }
         else if (key == "Loc" && !loc) { n.loc = value; loc = true; }
         else if (key == "Character" && !who) { n.character = value; who = true; }
+        else if (key == "Updated" && !updated) { n.updated = value; updated = true; }
+        else if (key == "Updated by" && !updatedBy) { n.updatedBy = value; updatedBy = true; }
         else break;
         pos = next;
     }

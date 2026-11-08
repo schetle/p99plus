@@ -1,6 +1,7 @@
 #include "features/notepad/notebook.h"
 #include "core/app.h"
 #include "core/log.h"
+#include "util/text.h"
 #include <windows.h>
 #include <algorithm>
 #include <cstdio>
@@ -13,6 +14,7 @@ namespace {
 constexpr DWORD kWriteDelayMs = 1000;
 constexpr DWORD kMaxFileBytes = 4 * 1024 * 1024;   // a bigger file isn't a note
 constexpr size_t kMaxNotes = 2000;
+constexpr size_t kMaxNameChars = 60;   // of the title, in a file name
 
 std::vector<Note> s_notes;
 
@@ -54,8 +56,59 @@ bool ReadFileText(const std::string& path, std::string& out, std::string* modifi
     return ok;
 }
 
+bool IdTaken(const std::string& id);
+
+// The title as a file name: no characters Windows refuses or that would break a Markdown link
+// (`[text](name.md)`), no dots or spaces at the end, not a device name. "" for nothing left.
+std::string FileStem(const std::string& title)
+{
+    std::string out;
+    for (char c : title) {
+        if ((unsigned char)c < 0x20 || std::strchr("\\/:*?\"<>|[]()#%", c)) c = ' ';
+        if (c == ' ' && (out.empty() || out.back() == ' ')) continue;   // runs of spaces: one
+        out += c;
+    }
+    if (out.size() > kMaxNameChars) out.resize(kMaxNameChars);
+    while (!out.empty() && (out.back() == ' ' || out.back() == '.')) out.pop_back();
+    static const char* const kDevices[] = { "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4",
+                                            "LPT1", "LPT2", "LPT3" };
+    for (const char* d : kDevices)
+        if (_stricmp(out.c_str(), d) == 0) out += " note";
+    return out;
+}
+
+bool FileExists(const std::string& id)
+{
+    return GetFileAttributesA((Folder() + id + ".md").c_str()) != INVALID_FILE_ATTRIBUTES;
+}
+
+// A new note's file name, from its first line (else the time it was made): "Title", "Title (2)", ...
+void Name(Note& n)
+{
+    std::string stem = FileStem(FirstLine(n, kMaxNameChars));
+    if (stem.empty()) {
+        stem = n.created;
+        for (char& c : stem) {
+            if (c == ' ') c = '_';
+            else if (c == ':') c = '-';
+        }
+    }
+    n.id.clear();   // so it doesn't count itself as taken
+    std::string id = stem;
+    for (int i = 2; IdTaken(id) || FileExists(id); ++i) id = stem + " (" + std::to_string(i) + ")";
+    n.id = id;
+}
+
 bool Write(Note& n)
 {
+    if (!n.saved) {
+        if (text::Trim(n.text).empty()) {   // nothing typed: no file
+            n.dirty = false;
+            return true;
+        }
+        Name(n);
+        n.saved = true;
+    }
     const std::string path = PathOf(n), tmp = path + ".tmp";
     CreateDirectoryA(Folder().c_str(), nullptr);
     const std::string content = Serialize(n);
@@ -88,7 +141,7 @@ void Sort()
 bool IdTaken(const std::string& id)
 {
     for (const Note& n : s_notes)
-        if (n.id == id) return true;
+        if (_stricmp(n.id.c_str(), id.c_str()) == 0) return true;   // as Windows compares file names
     return false;
 }
 
@@ -115,6 +168,7 @@ void Load()
             continue;
         }
         n.id.assign(fd.cFileName, strlen(fd.cFileName) - 3);   // without ".md"
+        n.saved = true;
         Parse(content, n);
         if (n.created.empty()) n.created = modified.empty() ? Now() : modified;
         s_notes.push_back(std::move(n));
@@ -130,14 +184,10 @@ int Add(const std::string& zone, const std::string& loc, const std::string& char
     n.zone = zone;
     n.loc = loc;
     n.character = character;
-    std::string stem = n.created;
-    for (char& c : stem) {
-        if (c == ' ') c = '_';
-        else if (c == ':') c = '-';
-    }
+    // A stand-in id until the note is named (Write); ":" can't be in a file name, so no file has it.
+    const std::string stem = "new:" + n.created;
     n.id = stem;
-    for (int i = 2; IdTaken(n.id); ++i) n.id = stem + "_" + std::to_string(i);
-    Write(n);
+    for (int i = 2; IdTaken(n.id); ++i) n.id = stem + ":" + std::to_string(i);
     const std::string id = n.id;
     s_notes.push_back(std::move(n));
     Sort();
@@ -146,18 +196,28 @@ int Add(const std::string& zone, const std::string& loc, const std::string& char
     return 0;
 }
 
-void Changed(int index)
+void Changed(int index, const std::string& character)
 {
     if (index < 0 || index >= (int)s_notes.size()) return;
-    s_notes[index].dirty = true;
-    s_notes[index].changed = GetTickCount64();
+    Note& n = s_notes[index];
+    n.updated = Now();
+    n.updatedBy = character;
+    n.dirty = true;
+    n.changed = GetTickCount64();
 }
 
 void Remove(int index)
 {
     if (index < 0 || index >= (int)s_notes.size()) return;
-    DeleteFileA(PathOf(s_notes[index]).c_str());
+    if (s_notes[index].saved) DeleteFileA(PathOf(s_notes[index]).c_str());
     s_notes.erase(s_notes.begin() + index);
+}
+
+void Settle(int index)
+{
+    if (index < 0 || index >= (int)s_notes.size()) return;
+    Note& n = s_notes[index];
+    if (!n.saved && n.dirty) Write(n);
 }
 
 void Flush()
@@ -170,7 +230,7 @@ void Tick()
 {
     const ULONGLONG now = GetTickCount64();
     for (Note& n : s_notes)
-        if (n.dirty && now - n.changed >= kWriteDelayMs) Write(n);
+        if (n.saved && n.dirty && now - n.changed >= kWriteDelayMs) Write(n);   // a new one waits for Settle
 }
 
 } // namespace notepad::book

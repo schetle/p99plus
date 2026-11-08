@@ -1,4 +1,5 @@
 #include "features/notepad/markdown.h"
+#include "game/ui/stml_link.h"
 #include <cctype>
 #include <vector>
 
@@ -14,6 +15,7 @@ constexpr const char* kItalic   = "#9ec8ff";
 constexpr const char* kCode     = "#a8a8a8";
 constexpr const char* kQuote    = "#a8a8a8";
 constexpr const char* kRule     = "#707070";
+constexpr const char* kLink     = "#7fb2ff";
 constexpr const char* kBullet   = "\x95";   // Windows-1252 bullet, the encoding of the game's text
 
 std::string Colored(const char* color, const std::string& stml)
@@ -41,6 +43,13 @@ std::string Escape(const std::string& s)
 }
 
 bool IsWord(char c) { return std::isalnum((unsigned char)c) != 0; }
+
+// A link to another note ("other.md", "notes/other.md"): not a web address, a mail link or a
+// place in this note.
+bool NoteTarget(const std::string& target)
+{
+    return !target.empty() && target[0] != '#' && target.find(':') == std::string::npos;
+}
 
 // One line's spans: `code`, **bold**, __bold__, *italic*, _italic_ and [text](link). A marker
 // with no partner stays as typed.
@@ -85,7 +94,12 @@ std::string Inline(const std::string& s)
             const size_t close = s.find("](", i + 1);
             const size_t end = close == std::string::npos ? close : s.find(')', close + 2);
             if (close != std::string::npos && end != std::string::npos && close > i + 1) {
-                out += Escape(s.substr(i + 1, close - i - 1));   // the link is dropped: the game can't open it
+                const std::string text = Escape(s.substr(i + 1, close - i - 1));
+                const std::string target = s.substr(close + 2, end - close - 2);
+                if (NoteTarget(target))   // clicked, the notepad opens that note
+                    out += game::wnd::StmlLink(target, Colored(kLink, "<U>" + text + "</U>"));
+                else
+                    out += text;   // the game can't open a web page: the text only
                 i = end + 1;
                 continue;
             }

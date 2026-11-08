@@ -7,6 +7,8 @@
 #include "util/mem.h"
 #include <windows.h>
 #include <algorithm>
+#include <cctype>
+#include <iterator>
 
 namespace game::wnd {
 
@@ -17,6 +19,40 @@ constexpr int       kSpareChars = 4000;
 constexpr size_t    kMaxSteps = 200;         // undo (and redo) steps kept
 constexpr ULONGLONG kTypingPauseMs = 1000;   // a pause this long ends a burst of typing (one undo step)
 constexpr ULONGLONG kPollMs = 250;           // how often Update reads the box back
+constexpr ULONGLONG kRepeatDelayMs = 400;    // a held arrow repeats after this long ...
+constexpr ULONGLONG kRepeatMs = 35;          // ... this often
+
+constexpr int kNavKeys[] = { VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN, VK_HOME, VK_END };
+
+bool IsWordChar(char c) { return (unsigned char)c >= 0x80 || std::isalnum((unsigned char)c) || c == '_'; }
+
+size_t LineStart(const std::string& s, size_t at)
+{
+    while (at > 0 && s[at - 1] != '\n') --at;
+    return at;
+}
+
+size_t LineEnd(const std::string& s, size_t at)
+{
+    while (at < s.size() && s[at] != '\n') ++at;
+    return at;
+}
+
+// Ctrl+Left: to the start of this word, or of the one before.
+size_t WordLeft(const std::string& s, size_t at)
+{
+    while (at > 0 && !IsWordChar(s[at - 1])) --at;
+    while (at > 0 && IsWordChar(s[at - 1])) --at;
+    return at;
+}
+
+// Ctrl+Right: past this word and the gap after it.
+size_t WordRight(const std::string& s, size_t at)
+{
+    while (at < s.size() && IsWordChar(s[at])) ++at;
+    while (at < s.size() && !IsWordChar(s[at])) ++at;
+    return at;
+}
 
 int Room(size_t chars) { return std::max(kMinChars, (int)chars + kSpareChars); }
 
@@ -70,12 +106,96 @@ bool TextEdit::Update(bool keysAllowed)
     const bool keys = keysAllowed && box.HasFocus() && GetForegroundWindow() == g_host->hwnd;
     for (int i = 0; i < kNumShortcuts; ++i)
         if (keys_[i].Poll(kShortcuts[i].key, keys)) changed = Run(kShortcuts[i].action) || changed;
+    Navigate(keys && !(keybind::HeldMods() & keybind::kAlt));
     const ULONGLONG now = GetTickCount64();
     if (now >= nextPoll_) {
         nextPoll_ = now + kPollMs;
         changed = Sync() || changed;
     }
     return changed;
+}
+
+void TextEdit::Navigate(bool keys)
+{
+    int held = 0;
+    if (keys && !keybind::Capturing())
+        for (int vk : kNavKeys)
+            if (keybind::KeyDown(vk)) held = vk;   // two at once: the last in the list wins
+    const ULONGLONG now = GetTickCount64();
+    bool act = false;
+    if (held != navKey_) {
+        navKey_ = held;
+        navNext_ = now + kRepeatDelayMs;
+        act = held != 0;
+    } else if (held && now >= navNext_) {
+        navNext_ = now + kRepeatMs;
+        act = true;
+    }
+    if (act) {
+        const int mods = keybind::HeldMods();
+        Move(held, (mods & keybind::kShift) != 0, (mods & keybind::kCtrl) != 0);
+    }
+}
+
+void TextEdit::Move(int vk, bool shift, bool ctrl)
+{
+    const Wnd box = Box();
+    const std::string shown = box.Text(limit_);   // positions count the box's own characters
+    const int size = (int)shown.size();
+    int start, end;
+    box.EditSelection(start, end);
+    start = std::min(start, size);
+    end = std::min(end, size);
+    // The box gives the selection without its direction: ours, unless the player changed it since
+    // (a click, typing), then the cursor is at its end.
+    if (std::min(anchor_, caret_) != start || std::max(anchor_, caret_) != end) {
+        anchor_ = start;
+        caret_ = end;
+        goalColumn_ = -1;
+    }
+    const bool selection = start != end;
+    size_t at = (size_t)caret_;
+    if (vk != VK_UP && vk != VK_DOWN) goalColumn_ = -1;
+    switch (vk) {
+    case VK_LEFT:
+        if (selection && !shift) at = (size_t)start;   // the selection goes; the cursor to its start
+        else if (ctrl) at = WordLeft(shown, at);
+        else if (at > 0) --at;
+        break;
+    case VK_RIGHT:
+        if (selection && !shift) at = (size_t)end;
+        else if (ctrl) at = WordRight(shown, at);
+        else if (at < shown.size()) ++at;
+        break;
+    case VK_HOME:
+        at = ctrl ? 0 : LineStart(shown, at);
+        break;
+    case VK_END:
+        at = ctrl ? shown.size() : LineEnd(shown, at);
+        break;
+    case VK_UP:
+    case VK_DOWN: {
+        const size_t lineStart = LineStart(shown, at);
+        if (goalColumn_ < 0) goalColumn_ = (int)(at - lineStart);
+        size_t target;
+        if (vk == VK_UP) {
+            if (lineStart == 0) { at = 0; break; }   // the first line: to the start
+            target = LineStart(shown, lineStart - 1);
+        } else {
+            const size_t lineEnd = LineEnd(shown, at);
+            if (lineEnd >= shown.size()) { at = shown.size(); break; }   // the last line: to the end
+            target = lineEnd + 1;
+        }
+        at = std::min(target + (size_t)goalColumn_, LineEnd(shown, target));
+        break;
+    }
+    default:
+        return;
+    }
+    caret_ = (int)at;
+    if (!shift) anchor_ = caret_;
+    box.EditSelect(std::min(anchor_, caret_), std::max(anchor_, caret_));
+    lastCursor_ = caret_;
 }
 
 void TextEdit::Put(const std::string& text)
@@ -174,12 +294,20 @@ using KeyboardMsg_t = int (__thiscall*)(void* mgr, int key, int down);
 KeyboardMsg_t oKeyboardMsg = nullptr;
 volatile uintptr_t s_guarded = 0;   // GuardKeys' control
 constexpr int kDikEscape = 0x01;
+// The arrows, Home and End (TextEdit's kNavKeys as DirectInput codes).
+constexpr int kDikNavKeys[] = { 0xc8, 0xd0, 0xcb, 0xcd, 0xc7, 0xcf };
+
+bool IsNavKey(int key) { return std::find(std::begin(kDikNavKeys), std::end(kDikNavKeys), key) != std::end(kDikNavKeys); }
 
 int __fastcall Hk_KeyboardMsg(void* mgr, void* /*edx*/, int key, int down)
 {
     hook::Busy busy;
     const uintptr_t guarded = s_guarded;
     const bool held = guarded && down && mem::Read<uintptr_t>((uintptr_t)mgr + kMgrFocus) == guarded;
+    // TextEdit moves the cursor itself. With Shift held the box's own Left/Right also step it and
+    // collapse the selection, so Shift+arrow selected one character and skipped one; the box
+    // doesn't get these keys at all.
+    if (held && IsNavKey(key)) return 0;
     const int r = oKeyboardMsg(mgr, key, down);
     if (!held) return r;
     if (key == kDikEscape) Wnd(guarded).DropFocus();

@@ -63,6 +63,7 @@ inline constexpr uintptr_t kCreateChildren = 0x5a25b0; // void __thiscall(wnd): 
 inline constexpr uintptr_t kButtonSetCheck = 0x5bb140; // void __thiscall(button, bool), ret 4 (writes kChecked)
 inline constexpr uintptr_t kGetChildItem  = 0x5a1e10;  // CXWnd* __thiscall(wnd, const CXStr& screenId), ret 4
 inline constexpr uintptr_t kXStrCtor      = 0x571e00;  // void __thiscall(CXStr* slot, const char*), ret 4
+inline constexpr uintptr_t kXStrCtorWide  = 0x571f00;  // void __thiscall(CXStr* slot, const wchar_t*), ret 4: a UTF-16 string
 inline constexpr uintptr_t kXStrFree      = 0x571d00;  // void __thiscall(CXStr* slot, rep), ret 4
 // Controls (notes/internals/ui-windows.md, "Notepad controls").
 inline constexpr uintptr_t kListAddString = 0x59b9d0;  // int __thiscall(list, const CXStr* text, ARGB color, int data, void* anim), ret 0x10: the new row
@@ -73,6 +74,8 @@ inline constexpr uintptr_t kSetFocusWnd   = 0x5ae0f0;  // CXWnd* __thiscall(mana
 inline constexpr uintptr_t kEditInsert    = 0x5b90e0;  // void __thiscall(edit, CXStr text, int), ret 8: replaces the selection with
                                                        // `text` (at the cursor if none); the callee frees the CXStr (paste passes 0)
 inline constexpr uintptr_t kStmlSetText   = 0x5a8b00;  // void __thiscall(stml, CXStr text, int, int), ret 0xc; the callee frees the CXStr (stock calls pass 1, 0)
+inline constexpr uintptr_t kStmlActivateLink = 0x5ac550;  // void __thiscall(stml, StmlLink link by value), ret 0x10: a clicked
+                                                       // <a> (from LButtonUp 0x5acc90); switch on the type, frees link.text
 // UI (re)load. The XML is parsed by the loader, which frees every earlier definition first, so a
 // screen exists only if it came in with the EQUI.xml load. kBuildGameUi then creates the in-world
 // windows; kResetGameUi deletes them all (log line "Resetting game UI.").
@@ -236,6 +239,8 @@ inline constexpr unsigned char kBuildGameUiPrologue[] = { 0xb8, 0x72, 0x63, 0x62
 // push esi; push edi; push <"Resetting game UI.">
 inline constexpr unsigned char kResetGameUiPrologue[] = { 0x56, 0x57, 0x68, 0xf8, 0x25, 0x64, 0x00 };
 
+// push -1; push <seh handler>; mov eax, fs:[0]
+inline constexpr unsigned char kStmlActivateLinkPrologue[] = { 0x6a, 0xff, 0x68, 0x18, 0x36, 0x63, 0x00, 0x64, 0xa1 };
 // mov eax,[0x99d334]; sub esp,0xc; push esi
 inline constexpr unsigned char kWndCursorPrologue[] = { 0xa1, 0x34, 0xd3, 0x99, 0x00, 0x83, 0xec, 0x0c, 0x56 };
 inline constexpr unsigned char kDragSizableTestBytes[] = { 0x8b, 0x57, 0x64, 0xf6, 0xc6, 0x02, 0x75, 0x59 };

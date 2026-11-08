@@ -17,13 +17,16 @@
 #include "game/eqgame.h"
 #include "game/ui/custom_window.h"
 #include "game/ui/sidl_xml.h"
+#include "game/ui/stml_link.h"
 #include "game/ui/text_edit.h"
 #include "overlay/overlay.h"
 #include "overlay/widgets.h"
 #include <imgui.h>
 #include <windows.h>
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -48,7 +51,7 @@ constexpr unsigned kFocusRing = 0xff4ad2ff;   // ImGui ABGR: the gold of the Mar
 // ---- the windows ---------------------------------------------------------------------------
 
 // The notepad's layout, in the window's client area. Left: the list (fixed width) with New and
-// Delete under it. Right: a header (date, place), then the text, which gets all the rest.
+// Delete under it. Right: a header (created, last updated, place), then the text, which gets all the rest.
 std::string NotepadXml()
 {
     // { top, bottom, left, right, leftFromLeft, topFromTop, bottomFromTop, rightFromLeft }
@@ -57,13 +60,14 @@ std::string NotepadXml()
     const sidl::Anchors delBtn = { 30, 6, 94, 180, true, false, false, true };
     const sidl::Anchors date   = { 4, 22, 188, 82, true };
     const sidl::Anchors mode   = { 3, 25, 78, 4, false };
-    const sidl::Anchors where  = { 26, 44, 188, 6, true };
-    const sidl::Anchors body   = { 50, 6, 188, 6, true, true, false, false };
-    const sidl::Anchors hint   = { 60, 78, 192, 10, true };
+    const sidl::Anchors update = { 26, 44, 188, 6, true };
+    const sidl::Anchors where  = { 48, 66, 188, 6, true };
+    const sidl::Anchors body   = { 72, 6, 188, 6, true, true, false, false };
+    const sidl::Anchors hint   = { 82, 100, 192, 10, true };
 
     sidl::Screen screen = { kNotepadScreen, 200, 120, 560, 380, {}, true, true, "Notepad" };
     screen.pieces = { "P99PlusNotepadList", "P99PlusNotepadNew", "P99PlusNotepadDelete", "P99PlusNotepadDate",
-                      "P99PlusNotepadMode", "P99PlusNotepadWhere", "P99PlusNotepadEditor", "P99PlusNotepadStml",
+                      "P99PlusNotepadMode", "P99PlusNotepadUpdated", "P99PlusNotepadWhere", "P99PlusNotepadEditor", "P99PlusNotepadStml",
                       "P99PlusNotepadHint" };
     return sidl::Document({
         sidl::Listbox("P99PlusNotepadList", "NoteList", list, "Notes"),
@@ -71,6 +75,7 @@ std::string NotepadXml()
         sidl::PushButton("P99PlusNotepadDelete", "DelBtn", delBtn, "Delete"),
         sidl::Label("P99PlusNotepadDate", "DateLine", date, "-", false),
         sidl::PushButton("P99PlusNotepadMode", "ModeBtn", mode, "Edit"),
+        sidl::Label("P99PlusNotepadUpdated", "UpdatedLine", update, "-", false),
         sidl::Label("P99PlusNotepadWhere", "WhereLine", where, "-", false),
         sidl::Editbox("P99PlusNotepadEditor", "Editor", body),
         sidl::StmlBox("P99PlusNotepadStml", "Stml", body),
@@ -110,7 +115,7 @@ game::wnd::TextEdit     s_edit(s_window, "Editor");
 enum Mode { kView = 0, kEdit = 1 };
 
 // What a core reload keeps (the notes themselves are on disk).
-struct Stash { char id[48]; int mode; };
+struct Stash { char id[96]; int mode; };
 constexpr const char* kStashKey = "notepad.state";
 
 int         s_selected = -1;       // index in book::All(), -1 for none
@@ -141,7 +146,9 @@ void NoteEdited()
     Note& n = Notes()[s_selected];
     const std::string row = RowText(n);
     n.text = s_edit.Text();
-    book::Changed(s_selected);
+    std::string who;
+    game::PlayerName(who);
+    book::Changed(s_selected, who);
     s_stmlDirty = true;
     if (RowText(n) != row) s_listDirty = true;
 }
@@ -163,6 +170,30 @@ void LoadEditor()
     s_editorId = n.id;
 }
 
+// Writes the selected note now (`all`: every changed note). A new note gets its file, named after
+// its first line, and with it a new id: the selection and the text box follow it.
+void WriteNow(bool all)
+{
+    const bool held = Valid(s_selected) && Notes()[s_selected].id == s_editorId;
+    if (all) book::Flush();
+    else book::Settle(s_selected);
+    if (!Valid(s_selected)) return;
+    s_selectedId = Notes()[s_selected].id;
+    if (held) s_editorId = s_selectedId;
+}
+
+// A new note's title is settled once the cursor is past the end of its first line.
+void SettleTitle()
+{
+    if (!EditingSelected() || Notes()[s_selected].saved) return;
+    const std::string& text = Notes()[s_selected].text;
+    const size_t lineEnd = text.find('\n');
+    if (lineEnd == std::string::npos) return;
+    int start, end;
+    s_edit.Box().EditSelection(start, end);
+    if ((size_t)start > lineEnd) WriteNow(false);
+}
+
 void SelectionChanged()
 {
     s_selectedId = Valid(s_selected) ? Notes()[s_selected].id : std::string();
@@ -175,6 +206,7 @@ void SelectionChanged()
 void SelectNote(int index)
 {
     SyncFromEditor();
+    WriteNow(false);   // the note left: a new one gets its file
     s_selected = index;
     s_mode = kView;
     SelectionChanged();
@@ -183,6 +215,7 @@ void SelectNote(int index)
 void NewNote()
 {
     SyncFromEditor();
+    WriteNow(false);
     std::string zone, loc, who;
     game::ZoneName(zone);
     game::PlayerLocText(loc);
@@ -215,6 +248,7 @@ void ToggleMode()
     if (!Valid(s_selected)) return;
     if (s_mode == kEdit) {
         SyncFromEditor();
+        WriteNow(false);
         s_mode = kView;
         s_stmlDirty = true;
     } else {
@@ -243,13 +277,20 @@ void OnClosed()
 {
     s_edit.Box().DropFocus();   // the keys go back to the game
     SyncFromEditor();
-    book::Flush();
+    WriteNow(true);
 }
 
 std::string HeaderDate(const Note& n)
 {
-    std::string s = "Written " + n.created;
+    std::string s = "Created " + n.created;
     if (!n.character.empty()) s += "  by " + n.character;
+    return s;
+}
+
+std::string HeaderUpdated(const Note& n)
+{
+    std::string s = "Updated " + n.updated;
+    if (!n.updatedBy.empty()) s += "  by " + n.updatedBy;
     return s;
 }
 
@@ -261,12 +302,45 @@ std::string HeaderWhere(const Note& n)
     return s.empty() ? "(place unknown)" : s;
 }
 
+// A link's target ("other.md", "./notes/My%20note.md#part") -> the note it names, -1 for none.
+int FindLinked(const std::string& target)
+{
+    std::string name;
+    for (size_t i = 0; i < target.size(); ++i) {   // %20 and the like
+        if (target[i] == '%' && i + 2 < target.size() && std::isxdigit((unsigned char)target[i + 1]) &&
+            std::isxdigit((unsigned char)target[i + 2])) {
+            name += (char)std::stoi(target.substr(i + 1, 2), nullptr, 16);
+            i += 2;
+        } else {
+            name += target[i] == '/' ? '\\' : target[i];
+        }
+    }
+    name = name.substr(0, name.find('#'));
+    const size_t slash = name.rfind('\\');   // only the file name: every note is in the one folder
+    if (slash != std::string::npos) name = name.substr(slash + 1);
+    if (name.size() > 3 && _stricmp(name.c_str() + name.size() - 3, ".md") == 0) name.resize(name.size() - 3);
+    for (int i = 0; i < (int)Notes().size(); ++i)
+        if (_stricmp(Notes()[i].id.c_str(), name.c_str()) == 0) return i;
+    return -1;
+}
+
+void FollowLink(const std::string& target)
+{
+    const int i = FindLinked(target);
+    if (i < 0) {
+        Log("notepad: no note for the link \"%s\" in %s", target.c_str(), book::Folder().c_str());
+        return;
+    }
+    SelectNote(i);
+}
+
 void Update()
 {
     if (s_window.Clicked("NewBtn")) NewNote();
     if (s_window.Clicked("DelBtn")) DeleteClicked();
     if (s_window.Clicked("ModeBtn")) ToggleMode();
     if (EditingSelected() && s_edit.Update(!overlay::Visible())) NoteEdited();
+    SettleTitle();
 
     // The list: rebuilt when a note was added, removed or its first line changed; the player's
     // click on a row selects that note.
@@ -297,6 +371,7 @@ void Update()
     s_window.ShowChild("Stml", has && s_mode == kView);
     s_window.ShowChild("ModeBtn", has);
     s_window.ShowChild("DateLine", has);
+    s_window.ShowChild("UpdatedLine", has && !Notes()[s_selected].updated.empty());
     s_window.ShowChild("WhereLine", has);
     s_window.ShowChild("HintLine", !has);
     s_window.SetText("ModeBtn", s_mode == kEdit ? "View" : "Edit");
@@ -305,11 +380,14 @@ void Update()
 
     const Note& n = Notes()[s_selected];
     s_window.SetText("DateLine", HeaderDate(n));
+    if (!n.updated.empty()) s_window.SetText("UpdatedLine", HeaderUpdated(n));
     s_window.SetText("WhereLine", HeaderWhere(n));
     if (s_mode == kView && s_stmlDirty) {
         s_window.SetStml("Stml", ToStml(n.text));
         s_stmlDirty = false;
     }
+    std::string target;
+    if (s_mode == kView && game::wnd::TakeLink(s_window.Child("Stml"), target)) FollowLink(target);
 }
 
 void Toggle() { s_window.SetShown(!s_window.Visible()); }
@@ -362,7 +440,7 @@ void OnShutdown()
     game::wnd::GuardKeys(game::wnd::Wnd());
     s_edit.Box().DropFocus();
     SyncFromEditor();
-    book::Flush();
+    WriteNow(true);   // before the id goes into the stash: a new note's changes with its file
     Stash st = {};
     snprintf(st.id, sizeof(st.id), "%s", s_selectedId.c_str());
     st.mode = s_mode;
