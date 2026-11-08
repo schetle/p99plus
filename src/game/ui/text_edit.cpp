@@ -293,6 +293,8 @@ namespace {
 using KeyboardMsg_t = int (__thiscall*)(void* mgr, int key, int down);
 KeyboardMsg_t oKeyboardMsg = nullptr;
 volatile uintptr_t s_guarded = 0;   // GuardKeys' control
+volatile bool s_escWanted = false;   // TakeEscape(true): a lone Escape is taken
+volatile bool s_escTaken = false;    // and one was, since the last TakeEscape
 constexpr int kDikEscape = 0x01;
 // The arrows, Home and End (TextEdit's kNavKeys as DirectInput codes).
 constexpr int kDikNavKeys[] = { 0xc8, 0xd0, 0xcb, 0xcd, 0xc7, 0xcf };
@@ -308,22 +310,33 @@ int __fastcall Hk_KeyboardMsg(void* mgr, void* /*edx*/, int key, int down)
     // collapse the selection, so Shift+arrow selected one character and skipped one; the box
     // doesn't get these keys at all.
     if (held && IsNavKey(key)) return 0;
+    // An Escape no control has: for TakeEscape (one press does one thing, so the game doesn't
+    // also clear the target).
+    if (!held && down && key == kDikEscape && s_escWanted) {
+        s_escTaken = true;
+        return 0;
+    }
     const int r = oKeyboardMsg(mgr, key, down);
     if (!held) return r;
     if (key == kDikEscape) Wnd(guarded).DropFocus();
     return 0;   // taken by the UI
 }
 
+// Hooked the first time it is needed.
+void EnsureHook()
+{
+    static bool tried = false;
+    if (tried || !game::Available()) return;
+    tried = true;
+    hook::Install("key guard", (void*)addr::kKeyboardMsg, (void*)&Hk_KeyboardMsg, (void**)&oKeyboardMsg,
+                  kKeyboardMsgPrologue);
+}
+
 } // namespace
 
 void GuardKeys(Wnd control)
 {
-    static bool tried = false;
-    if (control && !tried && game::Available()) {   // hooked the first time it is needed
-        tried = true;
-        hook::Install("key guard", (void*)addr::kKeyboardMsg, (void*)&Hk_KeyboardMsg, (void**)&oKeyboardMsg,
-                      kKeyboardMsgPrologue);
-    }
+    if (control) EnsureHook();
     s_guarded = oKeyboardMsg ? control.ptr() : 0;
 
     // The game only moves the focus for a click on a window; a click in the world leaves it.
@@ -333,6 +346,15 @@ void GuardKeys(Wnd control)
         if (down && !wasDown[i] && control && control.HasFocus() && !Wnd::UnderCursor()) control.DropFocus();
         wasDown[i] = down;
     }
+}
+
+bool TakeEscape(bool want)
+{
+    if (want) EnsureHook();
+    s_escWanted = want && oKeyboardMsg;
+    const bool taken = s_escTaken;
+    s_escTaken = false;
+    return want && taken;
 }
 
 } // namespace game::wnd

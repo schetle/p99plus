@@ -420,6 +420,8 @@ void OnFrame()
     const bool typing = s_window.Visible() && s_mode == kEdit && Valid(s_selected);
     const game::wnd::Wnd editor = typing ? s_edit.Box() : game::wnd::Wnd();
     game::wnd::GuardKeys(editor);
+    // Escape: the first leaves the text box (the key guard), the next closes the notepad.
+    if (game::wnd::TakeEscape(s_window.Visible() && !overlay::Visible())) s_window.SetShown(false);
     int l, t, r, b;
     if (editor.HasFocus() && editor.ScreenRect(l, t, r, b))   // the keys go to the note: say so
         overlay::Highlight((float)l - 2, (float)t - 2, (float)r + 2, (float)b + 2, kFocusRing);
@@ -438,6 +440,7 @@ void OnFrame()
 void OnShutdown()
 {
     game::wnd::GuardKeys(game::wnd::Wnd());
+    game::wnd::TakeEscape(false);
     s_edit.Box().DropFocus();
     SyncFromEditor();
     WriteNow(true);   // before the id goes into the stash: a new note's changes with its file

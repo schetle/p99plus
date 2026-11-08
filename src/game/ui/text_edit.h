@@ -75,4 +75,8 @@ private:
 // Call every frame; an empty Wnd for none.
 void GuardKeys(Wnd control);
 
+// While `want`, an Escape that no guarded control took (see GuardKeys: the first one only takes the
+// focus away) is kept from the game; the next call returns true, once. Call every frame.
+bool TakeEscape(bool want);
+
 } // namespace game::wnd
