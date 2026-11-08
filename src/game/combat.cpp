@@ -16,17 +16,19 @@ HitReport_t oHitReport = nullptr;
 std::vector<Listener> s_listeners;
 bool s_tried = false;
 bool s_ok = false;
+int  s_inReport = 0;   // depth of the hit report's original running
 
 // The hit as the client keeps it (packed): target id u16 +0, source id u16 +2, type u8 +4,
 // spell id u16 +5, damage i32 +7.
 Hit Decode(const unsigned char* p, bool printed)
 {
-    unsigned short target, source;
+    unsigned short target, source, spell;
     int damage;
     memcpy(&target, p + 0, 2);
     memcpy(&source, p + 2, 2);
+    memcpy(&spell, p + 5, 2);
     memcpy(&damage, p + 7, 4);
-    return { target, source, p[4], damage, printed };
+    return { target, source, p[4], spell, damage, printed };
 }
 
 int __fastcall Hk_HitReport(void* self, void* /*edx*/, const unsigned char* hit, int show, int extra)
@@ -38,7 +40,10 @@ int __fastcall Hk_HitReport(void* self, void* /*edx*/, const unsigned char* hit,
         const Hit h = Decode(hit, (show & 0xff) != 0);
         for (Listener fn : s_listeners) fn(h);
     }
-    return oHitReport(self, hit, show, extra);
+    ++s_inReport;
+    const int r = oHitReport(self, hit, show, extra);
+    --s_inReport;
+    return r;
 }
 
 } // namespace
@@ -55,6 +60,8 @@ bool Init()
 }
 
 bool Ready() { return s_ok; }
+
+bool InReport() { return s_inReport > 0; }
 
 void Listen(Listener fn)
 {

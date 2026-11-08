@@ -9,6 +9,7 @@ struct Hit {
     int target;     // spawn id of the one hit
     int source;     // spawn id of the attacker, 0 = none (e.g. falling)
     int type;       // skill / damage type; kSpellType and up are spells and other non-melee damage
+    int spell;      // spell id for spell damage (kSpellType and up)
     int damage;     // > 0 = damage done; for melee, <= 0 is one of the Avoid codes
     bool printed;   // the client prints it (false for a fight between others that is too far away)
 };
@@ -23,5 +24,7 @@ using Listener = void (*)(const Hit& hit);
 bool Init();                  // installs the hook once (needs game::Available()); false if unavailable
 bool Ready();
 void Listen(Listener fn);     // idempotent
+// True while the client's own hit report runs: chat lines printed meanwhile are its combat lines.
+bool InReport();
 
 } // namespace game::combat

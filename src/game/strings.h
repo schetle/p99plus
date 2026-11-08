@@ -11,7 +11,10 @@ namespace str {
 inline constexpr int kSenseHeading = 12435;   // "You think you are heading %1."
 inline constexpr int kSenseFail    = 12426;   // "You have no idea what direction you are facing."
 inline constexpr int kLocation     = 13177;   // "Your Location is %1, %2, %3" (/loc)
+inline constexpr int kNonMeleeHit  = 434;     // "%1 was hit by non-melee for %2 points of damage." (no attacker named: DoT ticks)
+inline constexpr int kPetSpellWornOff = 435;  // "Your pet's %1 spell has worn off."
 inline constexpr int kSpellWornOff = 436;     // "Your %1 spell has worn off of %2." (to the caster or the pet's owner)
+inline constexpr int kSpellWornOffNoTarget = 437;   // "Your %1 spell has worn off." (what EQ99 sends)
 } // namespace str
 
 } // namespace game

@@ -1,20 +1,29 @@
 // Combat text. Hits come from the client's hit report (game/combat.h): damage over the one hit,
 // misses and avoids over the defender, for hits on you or your pet, hits by you or your pet and
-// (optionally) hits by other players and their pets, and NPCs' fights. Heals are your own HP
+// (optionally) hits by other players and their pets, and NPCs' fights. Spell damage is purple.
+// DoT ticks come as chat lines that name no attacker ("X was hit by non-melee ..."): they are
+// yours when you or your pet cast a spell with a duration on that NPC (game/actions.h). Heals are your own HP
 // gains, added up over a moment so one heal is one number. Text is drawn with the game's fonts
 // (game/hud.h) over the spawn's name label, re-found by id every frame so it follows the spawn.
 #include "features/combattext/combat_text.h"
 #include "features/camera/camera.h"
+#include "game/actions.h"
 #include "game/combat.h"
+#include "game/eqchat.h"
 #include "game/eqgame.h"
 #include "game/hud.h"
+#include "game/spells.h"
+#include "game/strings.h"
 #include "overlay/widgets.h"
 #include "util/mem.h"
 #include "util/math.h"
 #include "util/timing.h"
 #include <imgui.h>
+#include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <iterator>
+#include <string>
 
 namespace combattext {
 
@@ -22,7 +31,7 @@ Settings cfg;
 
 namespace {
 
-enum class Kind { Damage, Heal, Avoid };
+enum class Kind { Damage, Spell, Heal, Avoid };
 
 struct Entry {
     bool       used = false;
@@ -39,6 +48,7 @@ constexpr int kMaxEntries = 64;
 Entry s_entries[kMaxEntries];
 
 constexpr uint32_t kDamageColor = 0xffe03030;
+constexpr uint32_t kSpellColor  = 0xffb060ff;   // non-melee damage (spells, DoT ticks)
 constexpr uint32_t kHealColor   = 0xff30e030;
 constexpr uint32_t kAvoidColor  = 0xffc0c0c0;
 // Texts on one spawn stack: the newest starts at the bottom and pushes the older ones up a line.
@@ -65,7 +75,72 @@ struct HpTrack {
     LONGLONG  pendingSince = 0;
 } s_hp;
 
+// Spells you or your pet cast on NPCs, so a DoT tick (which names no attacker) can be told apart
+// from someone else's. Both of the server's actions for a cast count: the first tick comes right
+// after the first one, before the "landed" one.
+struct Dot {
+    bool      used = false;
+    int       target = 0;
+    uintptr_t spawn = 0;       // the spawn at landing: a different one with the same id is a new NPC
+    int       spell = 0;
+    int       ticks = 0;       // estimated duration, -1 = until removed
+    LONGLONG  start = 0;
+};
+constexpr int   kMaxDots    = 32;
+constexpr float kDotGrace   = 3.0f;     // ticks a DoT is still believed past its estimate
+Dot s_dots[kMaxDots];
+
+const game::chat::Template kNonMelee = { game::str::kNonMeleeHit, "%1 was hit by non-melee for %2 points of damage." };
+
 float Seconds(LONGLONG ticks) { return (float)(ticks / (double)timing::Frequency()); }
+
+// Only the letters, lowercased: "a_gnoll01" and "a gnoll" (the client's and the server's clean
+// name) are the same.
+std::string NameKey(const std::string& name)
+{
+    std::string k;
+    for (unsigned char c : name)
+        if (std::isalpha(c)) k += (char)std::tolower(c);
+    return k;
+}
+
+bool DotLive(const Dot& d, LONGLONG now)
+{
+    if (!d.used) return false;
+    const uintptr_t s = game::SpawnById(d.target);
+    if (s != d.spawn || game::SpawnType(s) != 1) return false;   // left or died
+    if (d.ticks < 0) return true;
+    return Seconds(now - d.start) <= (d.ticks + kDotGrace) * game::spells::kTickSeconds;
+}
+
+void OnAction(const game::actions::Action& a)
+{
+    if (!cfg.enabled || a.type != game::actions::kSpellType) return;
+    const int me = game::SpawnId(game::LocalPlayer());
+    if (!me || a.target == me) return;
+    const uintptr_t target = game::SpawnById(a.target);
+    if (!target || game::SpawnType(target) != 1 || game::IsPetOf(target, me)) return;   // NPCs, not my pet
+    const uintptr_t source = game::SpawnById(a.source);
+    if (a.source != me && !game::IsPetOf(source, me)) return;
+    const game::spells::Spell* sp = game::spells::Find(a.spell);
+    if (!sp || !sp->detrimental) return;
+    const int level = a.level > 0 && a.level <= 100 ? a.level : game::SpawnLevel(source);
+    const int ticks = game::spells::DurationTicks(sp->formula, sp->duration, level);
+    if (ticks == 0) return;   // no duration: no ticks
+
+    const LONGLONG now = timing::Ticks();
+    Dot* slot = nullptr;
+    for (Dot& d : s_dots) {
+        if (d.used && d.target == a.target && d.spell == a.spell) { slot = &d; break; }   // recast
+        if (!slot && !DotLive(d, now)) slot = &d;
+    }
+    if (!slot) {   // all live: replace the oldest
+        slot = &s_dots[0];
+        for (Dot& d : s_dots) if (d.start < slot->start) slot = &d;
+    }
+    *slot = { true, a.target, target, a.spell, ticks, now };
+}
+
 
 // The estimated start in the world, for spawns without a usable label.
 bool StartPoint(uintptr_t spawn, math::Vec3& p)
@@ -145,6 +220,7 @@ void OnHit(const game::combat::Hit& h)
     if (!cfg.enabled) return;
     const int me = game::SpawnId(game::LocalPlayer());
     if (!me) return;
+    const bool spell = h.type >= game::combat::kSpellType;
     if (h.target == me) {
         if (!cfg.on_you) return;
     } else if (game::IsPetOf(game::SpawnById(h.target), me)) {
@@ -165,10 +241,37 @@ void OnHit(const game::combat::Hit& h)
     if (h.damage > 0) {
         char buf[16];
         snprintf(buf, sizeof(buf), "%d", h.damage);
-        Add(h.target, Kind::Damage, buf);
-    } else if (h.type < game::combat::kSpellType) {
+        Add(h.target, spell ? Kind::Spell : Kind::Damage, buf);
+    } else if (!spell) {
         Add(h.target, Kind::Avoid, AvoidWord(h.damage));
     }
+}
+
+// "X was hit by non-melee for N points of damage." printed by something other than the hit report:
+// a DoT tick the server sent as a message. Shown over the NPC of that name carrying one of your
+// spells (your target first, else the one you cast on last); others' DoTs aren't shown (the line
+// doesn't say whose it is).
+void OnChat(const char* text, int /*color*/)
+{
+    if (!cfg.enabled || game::combat::InReport()) return;
+    std::string args[2];
+    if (!game::chat::MatchArgs(text, kNonMelee, args, 2)) return;
+    const int damage = atoi(args[1].c_str());
+    if (damage <= 0) return;
+    if (!cfg.on_enemies) return;
+    const std::string who = NameKey(args[0]);
+    const int target = game::SpawnId(game::Target());
+    const LONGLONG now = timing::Ticks();
+    const Dot* best = nullptr;
+    for (const Dot& d : s_dots) {
+        if (!DotLive(d, now) || NameKey(game::SpawnName(d.spawn)) != who) continue;
+        if (d.target == target) { best = &d; break; }
+        if (!best || d.start > best->start) best = &d;
+    }
+    if (!best) return;
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", damage);
+    Add(best->target, Kind::Spell, buf);
 }
 
 void TrackHeals()
@@ -180,6 +283,8 @@ void TrackHeals()
     if (!game::InWorld() || !player || player != s_hp.player || zone != s_hp.zone || s_hp.last <= 0) {
         // Not in a loaded zone, a new character or zone, or no HP yet: start over from here. HP
         // jumps while a zone loads (items and buffs arriving) and isn't a heal.
+        if (player != s_hp.player || zone != s_hp.zone)
+            for (Dot& d : s_dots) d.used = false;   // ids are reused in the next zone
         s_hp = { player, zone, hp, 0, 0 };
         return;
     }
@@ -201,6 +306,7 @@ void TrackHeals()
 uint32_t ColorOf(Kind k)
 {
     switch (k) {
+    case Kind::Spell: return kSpellColor;
     case Kind::Heal:  return kHealColor;
     case Kind::Avoid: return kAvoidColor;
     default:          return kDamageColor;
@@ -265,10 +371,14 @@ void OnFrame()
     }
     // The hooks go in only once the feature is on (and stay until the core unloads).
     game::combat::Init();
+    game::actions::Init();
     game::hud::Init();
     if (!s_listening) {
         s_listening = true;
+        game::spells::Ready();   // read the spell file now rather than on the first cast
         game::combat::Listen(OnHit);
+        game::actions::Listen(OnAction);
+        game::chat::Listen(OnChat);
         game::hud::OnDraw(Draw);
     }
     TrackHeals();
@@ -285,7 +395,8 @@ const Setting kSettings[] = {
     IntSetting  ("combat_text", "font", &cfg.font, 0, 15, "Game font size (as in /chatfontsize)."),
     BoolSetting ("combat_text", "on_you", &cfg.on_you, "Show hits and misses on you, over your head."),
     BoolSetting ("combat_text", "on_pet", &cfg.on_pet, "Show hits and misses on your pet, over it."),
-    BoolSetting ("combat_text", "on_enemies", &cfg.on_enemies, "Show your and your pet's hits and misses, over the one attacked."),
+    BoolSetting ("combat_text", "on_enemies", &cfg.on_enemies,
+                 "Show your and your pet's hits, misses and DoT ticks, over the one attacked."),
     BoolSetting ("combat_text", "from_others", &cfg.from_others,
                  "Show other players' and their pets' hits and misses (those your chat shows), over the one attacked."),
     BoolSetting ("combat_text", "other_fights", &cfg.other_fights,

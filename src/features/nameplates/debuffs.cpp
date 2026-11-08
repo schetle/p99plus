@@ -1,7 +1,7 @@
 // Debuff icons under NPC names. A debuff is added when the server says one of your (or your
 // pet's) spells took hold (the landed spell action, game/actions.h). Only detrimental spells with a
 // duration count (game/spells.h). It goes again when the server says it wore off ("Your X spell has
-// worn off of Y."), when the NPC dies or leaves, on zoning, or a little after its estimated
+// worn off (of Y)."), when the NPC dies or leaves, on zoning, or a little after its estimated
 // duration has run out (in case the line didn't come).
 // Icons are drawn in a row just under the NPC's name label (and its health status line), right
 // after the engine draws the labels and depth-tested like them (render/icons.h), so whatever hides
@@ -62,6 +62,8 @@ constexpr float    kDepthBias  = 3.0f;          // world units toward the camera
                                                 // mustn't hide the icons under its name
 
 const game::chat::Template kWornOff = { game::str::kSpellWornOff, "Your %1 spell has worn off of %2." };
+const game::chat::Template kWornOffNoTarget = { game::str::kSpellWornOffNoTarget, "Your %1 spell has worn off." };
+const game::chat::Template kPetWornOff = { game::str::kPetSpellWornOff, "Your pet's %1 spell has worn off." };
 
 bool s_started = false;
 bool s_listening = false;   // the taps are installed
@@ -139,21 +141,32 @@ void OnAction(const game::actions::Action& a)
 }
 
 // "Your X spell has worn off of Y.": the one of yours (or your pet's) with that spell on an NPC
-// of that name; of several, the one whose estimate is closest to running out.
+// of that name. "Your X spell has worn off." (no NPC named) and "Your pet's X spell has worn
+// off.": yours or your pet's with that spell on any NPC. Of several, the one whose estimate is
+// closest to running out.
 void OnChat(const char* text, int /*color*/)
 {
     if (!cfg.enabled) return;
     std::string args[2];
-    if (!game::chat::MatchArgs(text, kWornOff, args, 2)) return;
-    const std::string who = NameKey(args[1]);
+    bool anyOwner = true, pet = false, named = true;
+    if (game::chat::MatchArgs(text, kWornOff, args, 2)) {
+    } else if (game::chat::MatchArgs(text, kPetWornOff, args, 1)) {
+        anyOwner = false; pet = true; named = false;
+    } else if (game::chat::MatchArgs(text, kWornOffNoTarget, args, 1)) {
+        anyOwner = false; named = false;
+    } else {
+        return;
+    }
+    const std::string who = named ? NameKey(args[1]) : std::string();
     const double now = Seconds(timing::Ticks());
     Entry* best = nullptr;
     double bestDiff = 0;
     for (Entry& e : s.entries) {
         if (!e.used) continue;
+        if (!anyOwner && (e.owner == Owner::Pet) != pet) continue;
         const game::spells::Spell* sp = game::spells::Find(e.spell);
         if (!sp || sp->name != args[0]) continue;
-        if (NameKey(game::SpawnName(game::SpawnById(e.target))) != who) continue;
+        if (named && NameKey(game::SpawnName(game::SpawnById(e.target))) != who) continue;
         const double diff = std::fabs(Seconds(e.start) + EstimatedEnd(e) - now);
         if (!best || diff < bestDiff) { best = &e; bestDiff = diff; }
     }

@@ -97,12 +97,12 @@ The first time you enter the world, p99plus adds two small files to your skin fo
 
 ### Combat text
 
-Numbers and words over the one a hit or heal happens to, in the game's own font, starting just above the name label: red for damage, grey for a miss (`Miss`, `Block`, `Parry`, `Riposte`, `Dodge`, `Invulnerable`, `Absorbed`), green for a heal. Each one stays for a moment, fades out and drifts up a little. Texts on the same target stack: a new one starts at the bottom and pushes the older ones up a line, and with more than five, the oldest goes.
+Numbers and words over the one a hit or heal happens to, in the game's own font, starting just above the name label: red for melee damage, purple for spell damage (nukes and DoT ticks), grey for a miss (`Miss`, `Block`, `Parry`, `Riposte`, `Dodge`, `Invulnerable`, `Absorbed`), green for a heal. Each one stays for a moment, fades out and drifts up a little. Texts on the same target stack: a new one starts at the bottom and pushes the older ones up a line, and with more than five, the oldest goes.
 
 - `Show combat text` (on by default): turns it all on or off.
 - `Attacks on you`: hits and misses on you, over your head (in first person, just above the middle of the screen).
 - `Attacks on your pet`: hits and misses on your pet, over it.
-- `Attacks on enemies`: your hits and misses, and your pet's, over the one attacked.
+- `Attacks on enemies`: your hits and misses, and your pet's, over the one attacked. This includes the ticks of your DoTs.
 - `Attacks from other players` (off by default): other players' hits and misses, and their pets', over the one attacked. Only fights close enough to show in your chat window.
 - `Other fights` (off by default): NPCs' hits and misses on anyone but you and your pet, such as guards fighting monsters, over the one attacked. Only fights close enough to show in your chat window.
 - `Heals on you`: your HP going up, shown where hits on you are, as one `+N` per heal. This includes regen; `Smallest heal` hides gains below it, so most regen ticks stay out.
