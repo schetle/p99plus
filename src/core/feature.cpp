@@ -2,6 +2,7 @@
 #include "features/camera/camera.h"
 #include "features/combattext/combat_text.h"
 #include "features/limiter/limiter.h"
+#include "features/models/models.h"
 #include "features/mouse/mouse.h"
 #include "features/nameplates/nameplates.h"
 #include "features/notepad/notepad.h"
@@ -25,6 +26,7 @@ const std::vector<const Feature*>& All()
         &notepad::feature,
         &combattext::feature,
         &nameplates::feature,
+        &models::feature,
         &limiter::feature,
         &overlay::feature,
     };

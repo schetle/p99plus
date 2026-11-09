@@ -138,6 +138,13 @@ The formatted view shows headings (`#`), bullet and numbered lists, `**bold**`, 
 
 Like the zone info window, the notepad is added to your skin the first time you enter the world; after you update p99plus, type `/loadskin <your skin>` once in the game.
 
+### Models
+
+- `Enable newer player models` (off by default): players show the newer, more detailed models (the ones introduced with Shadows of Luclin) instead of the 1999 ones.
+- One `Male` and one `Female` checkbox per race, for each of the 12 classic races and Iksar, so you can keep the old look for some.
+
+Changes apply the next time you enter the world. Only you see them: other players' clients decide for themselves.
+
 ### Limiter
 
 - `Enable frame limiter` (off by default) and `FPS cap`: a wider range than the in-game setting offers.

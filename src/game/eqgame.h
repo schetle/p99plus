@@ -126,6 +126,15 @@ inline constexpr uintptr_t kFontHeight    = 0x5a3a20;  // int __thiscall(font): 
 // The main loop, right after the game draws its own net-status text (0x4456ca, only when /netstat
 // is on): `mov ecx,[0x985c88]` (6 bytes), reached every pass. Our text is drawn from there.
 inline constexpr uintptr_t kHudPoint      = 0x4456d2;
+// Player models: the global model loader (0x43df32, "Initializing global data.", run on entering
+// the world) asks kUseLuclinModel per race and gender which ones get their global<tag>_chr.s3d.
+// int __thiscall(this, race, gender 0 male / 1 female), ret 8. It says no unless the server's
+// expansion mask (kExpansionMask, bit 2 Luclin, bit 3 PoP) allows it.
+inline constexpr uintptr_t kUseLuclinModel    = 0x43ac64;
+inline constexpr uintptr_t kExpansionMask     = 0x9247b8;
+// In the loader, once a Luclin model is loaded: `jne` past the Velious armor textures unless
+// eqclient.ini LoadVeliousArmorsWithLuclin is TRUE.
+inline constexpr uintptr_t kVeliousLuclinGate = 0x43ea9d;
 } // namespace addr
 
 // The zone list object: record pointers at +0x1c + id*4; each record has the long name at
@@ -263,6 +272,11 @@ inline constexpr unsigned char kHudPointBytes[] = { 0x8b, 0x0d, 0x88, 0x5c, 0x98
 
 // push ebx; push ebp; push esi; push edi; mov edi,ecx; xor ebx,ebx
 inline constexpr unsigned char kSpellActionPrologue[] = { 0x53, 0x55, 0x56, 0x57, 0x8b, 0xf9, 0x33, 0xdb };
+
+// push ebp; mov ebp,esp; mov eax,0x82
+inline constexpr unsigned char kUseLuclinModelPrologue[] = { 0x55, 0x8b, 0xec, 0xb8, 0x82, 0x00, 0x00, 0x00 };
+// jne 0x43ebbe
+inline constexpr unsigned char kVeliousLuclinGateBytes[] = { 0x0f, 0x85, 0x1b, 0x01, 0x00, 0x00 };
 
 // mov eax, <seh handler>   (then call __SEH_prolog)
 inline constexpr unsigned char kChatPrintPrologue[] = { 0xb8, 0x0a, 0x70, 0x62, 0x00 };
